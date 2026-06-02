@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  aion:
+    build: .
+    container_name: aion
+    ports:
+      - "6969:6969"  # HTTP API
+      - "6970:6970"  # WebSocket mesh
+      - "127.0.0.1:6971:6971"  # Setup wizard (loopback only)
+    volumes:
+      - aion_config:/home/aion/.aion
+      - aion_workspace:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Optional: sandbox
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6969/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+volumes:
+  aion_config:
+  aion_workspace:

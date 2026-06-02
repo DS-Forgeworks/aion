@@ -1,0 +1,35 @@
+# Build output
+dist/
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Frontend deps
+aion-ui/node_modules/
+aion-ui/dist/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# .NET
+*.nupkg
+*.nuget.props
+*.nuget.targets
+
+# Logs
+*.log
+/tmp/
+
+# Runtime data (user config stays local)
+~/.aion/

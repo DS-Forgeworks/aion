@@ -1,0 +1,38 @@
+.aion-sidebar {
+  width: 200px;
+  background: #0a0a0f;
+  border-right: 1px solid rgba(124, 58, 237, 0.2);
+  padding: 16px 0;
+  flex-shrink: 0;
+}
+
+.nav-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  color: #8888aa;
+  text-decoration: none;
+  font-size: 14px;
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+}
+
+.nav-item:hover {
+  color: #e0e0f0;
+  background: rgba(124, 58, 237, 0.05);
+}
+
+.nav-item.active {
+  color: #c084fc;
+  background: rgba(124, 58, 237, 0.1);
+  border-left-color: #7c3aed;
+}
+
+.nav-icon { font-size: 16px; }

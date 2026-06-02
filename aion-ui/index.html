@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AION - Agent Swarm OS</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <script>
+      window.AION_WS_PORT = 6970;
+      window.AION_API_PORT = window.location.port === '5173' ? 6969 : window.location.port;
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
