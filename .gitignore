@@ -33,3 +33,7 @@ Thumbs.db
 
 # Runtime data (user config stays local)
 ~/.aion/
+*.bak
+*.db
+*.db-shm
+*.db-wal
