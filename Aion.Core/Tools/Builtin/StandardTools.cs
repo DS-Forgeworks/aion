@@ -108,14 +108,23 @@ public class NowTool : ITool
 
     public Task<ToolResult> ExecuteAsync(string input, CancellationToken ct = default)
     {
-        var now = DateTime.Now;
-        var utc = DateTime.UtcNow;
-        var tz = TimeZoneInfo.Local;
+        try
+        {
+            var now = DateTime.Now;
+            var utc = DateTime.UtcNow;
+            var tz = TimeZoneInfo.Local;
+            var offset = tz.BaseUtcOffset;
+            var sign = offset >= TimeSpan.Zero ? "+" : "-";
+            var hours = Math.Abs(offset.Hours);
+            var minutes = Math.Abs(offset.Minutes);
 
-        var result = $@"Local: {now:yyyy-MM-dd HH:mm:ss}
-UTC: {utc:yyyy-MM-dd HH:mm:ss}
-Timezone: {tz.DisplayName} (UTC{tz.BaseUtcOffset:hh\\:mm})";
+            var result = $"Local: {now:yyyy-MM-dd HH:mm:ss}\nUTC: {utc:yyyy-MM-dd HH:mm:ss}\nTimezone: {tz.DisplayName} (UTC{sign}{hours:D2}:{minutes:D2})";
 
-        return Task.FromResult(ToolResult.Ok(result));
+            return Task.FromResult(ToolResult.Ok(result));
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult(ToolResult.Fail($"Time error: {ex.Message}"));
+        }
     }
 }
