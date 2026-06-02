@@ -12,34 +12,43 @@ public class PromptBuilder
         string recentMemory,
         string longTermMemory)
     {
-        return $@"You are {agentName}.
-{soulContent}
+        return $@"You are a JSON machine. Output ONLY valid JSON arrays.
 
-╔══════════════════════════════════════════════════════╗
-║  CAPABILITIES                                       ║
-╠══════════════════════════════════════════════════════╣
-║ Available tools:                                    ║
-║ {toolDefinitions.Replace("\n", "\n║ ")} 
-║                                                     ║
-║ Safety level: {capabilityLevel}                        ║
-║                                                     ║
-║ ⚠️  Rules:                                          ║
-║  - Return ONLY a JSON array. No explanations.        ║
-║  - Each element is a tool call or an answer.         ║
-║  - If you cannot complete the request, use           ║
-║    {{""tool"": ""none"", ""input"": {{""error"": reason}}}}.         ║
-║  - Do NOT fabricate tool results.                    ║
-╚══════════════════════════════════════════════════════╝
+TOOLS:
+{toolDefinitions}
 
---- MEMORY ---
+RULES:
+1. Entire response must be a JSON array. No other text.
+2. Each element: {{ ""tool"": ""<name>"", ""input"": <value or {{}}> }}
+3. If you know the answer from tools/memory:
+   [{{""tool"":""none"",""input"":{{""answer"":""<answer>""}}}}]
+4. If unsure or data unavailable:
+   [{{""tool"":""none"",""input"":{{""answer"":""I don't have access to that information""}}}}]
+5. NEVER answer from parametric knowledge. You have no knowledge of events, people, or facts.
+6. NEVER make up tool results. NEVER write text outside the JSON array.
+
+EXAMPLES:
+User: What time is it?
+Assistant: [{{""tool"":""now"",""input"":{{}}}}]
+
+User: 15 * 37
+Assistant: [{{""tool"":""calculator"",""input"":{{""expression"":""15*37""}}}}]
+
+User: Hi
+Assistant: [{{""tool"":""none"",""input"":{{""answer"":""Hello!""}}}}]
+
+User: Who won the world cup?
+Assistant: [{{""tool"":""none"",""input"":{{""answer"":""I don't have access to that information""}}}}]
+
+--- RECENT ---
 {recentMemory}
---- END MEMORY ---
+--- END ---
 
---- LONG-TERM MEMORY ---
+--- LONG-TERM ---
 {longTermMemory}
---- END LONG-TERM MEMORY ---
+--- END ---
 
-Now respond to the user's request.";
+Request:";
     }
 
     public string BuildToolResultInjection(string toolName, string result)
@@ -50,18 +59,18 @@ Now respond to the user's request.";
 {result}
 --- END TOOL RESULT ---
 
-Now continue. If this answers the user, return an answer. If you need more tools, return more tool calls.";
+Continue. If answered, use none. If more tools needed, return more calls.";
     }
 
     public string BuildRetryPrompt(string originalInput, string errorMessage)
     {
-        return $@"Your previous response had issues:
+        return $@"Previous response had issues:
 {errorMessage}
 
-Original input was:
+Original input:
 {originalInput}
 
-Fix ONLY these issues and retry. Return ONLY a valid JSON array.";
+Fix issues and retry. Return ONLY valid JSON array.";
     }
 
     public string BuildFinalAttemptPrompt(string context)
