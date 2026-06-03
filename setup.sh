@@ -23,8 +23,9 @@ warn()  { echo -e "${YELLOW}  ⚠${NC} $1"; }
 fail()  { echo -e "${RED}  ✗ ${NC}$1"; exit 1; }
 header(){ echo -e "\n${BOLD}$1${NC}\n$(printf '%*s' ${#1} | tr ' ' '─')"; }
 
-# Normalise SRC_DIR — works with `bash setup.sh` from the project root
-SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || echo "$PWD")"
+# Normalise SRC_DIR — handles both `bash setup.sh` from project root AND `curl ... | bash`
+# Must use ${X:-} defaults because set -u makes unset vars fatal
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$PWD}")" && pwd 2>/dev/null || echo "$PWD")"
 
 # ── Checks if we're running interactively (has a real terminal) ──
 INTERACTIVE=false
@@ -70,14 +71,24 @@ detect_platform() {
 # Phase 0b: Setup directory check
 # ──────────────────────────────────────────────────────────
 check_source() {
-  if [ ! -f "$SRC_DIR/Aion.Host/Aion.Host.csproj" ]; then
-    fail "Cannot find AION source in $SRC_DIR.
-  Run this script from the project root (where Aion.Host/ and aion-ui/ live).
-  If you haven't cloned it yet:
-    git clone https://github.com/DS-Forgeworks/aion.git
-    cd aion && bash setup.sh"
+  if [ -f "$SRC_DIR/Aion.Host/Aion.Host.csproj" ]; then
+    ok "Source found: $SRC_DIR"
+    return 0
   fi
-  ok "Source found: $SRC_DIR"
+
+  # If running from pipe, clone the repo automatically
+  if [ -z "$SRC_DIR" ] || [ ! -d "$SRC_DIR/Aion.Host" ]; then
+    local TARGET="${PWD}/aion"
+    warn "Source not found. Cloning to $TARGET..."
+    command -v git &>/dev/null || install_git
+    git clone https://github.com/DS-Forgeworks/aion.git "$TARGET" 2>&1 | tail -3
+    if [ -d "$TARGET/Aion.Host" ]; then
+      SRC_DIR="$TARGET"
+      ok "Source cloned to $SRC_DIR"
+    else
+      fail "Clone failed. Try: git clone https://github.com/DS-Forgeworks/aion.git && cd aion && bash setup.sh"
+    fi
+  fi
 }
 
 # ──────────────────────────────────────────────────────────
@@ -264,7 +275,7 @@ install_launchers() {
   # Unix launcher
   cat > "$SRC_DIR/aion.sh" << 'LAUNCHER'
 #!/usr/bin/env bash
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$PWD}")" && pwd 2>/dev/null || echo "$PWD")"
 export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
 export PATH="$DOTNET_ROOT:$PATH"
 exec dotnet "$DIR/dist/Aion.Host.dll" "$@"
