@@ -25,6 +25,7 @@ public class AionController : ControllerBase
     private readonly AppConfig _config;
     private readonly IConversationStore _convStore;
     private readonly AuthService _auth;
+    private readonly PromptBuilder _promptBuilder;
 
     public AionController(
         AgentLoop agentLoop, ToolRegistry toolRegistry,
@@ -32,7 +33,8 @@ public class AionController : ControllerBase
         IAionLogger logger, IRateLimiter rateLimiter,
         ISafetyGate safety, AppConfig config,
         IConversationStore convStore,
-        AuthService auth)
+        AuthService auth,
+        PromptBuilder promptBuilder)
     {
         _agentLoop = agentLoop;
         _toolRegistry = toolRegistry;
@@ -44,6 +46,7 @@ public class AionController : ControllerBase
         _config = config;
         _convStore = convStore;
         _auth = auth;
+        _promptBuilder = promptBuilder;
     }
 
     // GET /api/health
@@ -63,6 +66,39 @@ public class AionController : ControllerBase
             errors_1h = 0,
             first_run = isFirstRun
         });
+    }
+
+    // GET /api/soul — return the current soul content
+    [HttpGet("soul")]
+    public IActionResult GetSoul()
+    {
+        var soulPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".aion", "AION_SOUL.md");
+        var content = System.IO.File.Exists(soulPath)
+            ? System.IO.File.ReadAllText(soulPath)
+            : "No soul file found. Create one at ~/.aion/AION_SOUL.md";
+        return Ok(new { ok = true, content, path = soulPath });
+    }
+
+    // POST /api/soul — update the soul content and hot-reload
+    [HttpPost("soul")]
+    public async Task<IActionResult> SetSoul([FromBody] SoulRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Content))
+            return BadRequest(new { ok = false, error = "Soul content is required" });
+
+        var soulPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".aion", "AION_SOUL.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(soulPath)!);
+        await System.IO.File.WriteAllTextAsync(soulPath, req.Content);
+
+        // Hot-reload into the running PromptBuilder
+        _promptBuilder.LoadSoul(soulPath);
+
+        _logger.Info("Soul", "Soul updated and hot-reloaded");
+        return Ok(new { ok = true, message = "Soul updated. New identity takes effect immediately." });
     }
 
     // GET /api/version
@@ -514,6 +550,7 @@ public class AionController : ControllerBase
 }
 
 public record CreateToolRequest(string? Name, string? Description, string? Code, string? Language);
+public record SoulRequest(string? Content);
 public record LoginRequest(string? Username, string? Password);
 public record ChangePasswordRequest(string? OldPassword, string? NewPassword);
 public record MessageRequest(string? Text, string? Mode, string? Model, string? ConversationId = null);
