@@ -70,13 +70,21 @@ builder.Services.AddSingleton<ISandboxExecutor>(new SandboxToolAdapter(sandbox))
 var llmService = new LlmService(appConfig, sanitizer);
 var promptBuilder = new PromptBuilder();
 
-// Load system personality (soul) from AION_SYSTEM_PROMPT.md
-var soulPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "AION_SYSTEM_PROMPT.md");
-if (!File.Exists(soulPath))
-    soulPath = Path.Combine(AppContext.BaseDirectory, "AION_SYSTEM_PROMPT.md");
-if (!File.Exists(soulPath))
-    soulPath = Path.Combine(configDir, "AION_SYSTEM_PROMPT.md");
-promptBuilder.LoadSoul(soulPath);
+// Load soul (identity/values/voice) and protocol (JSON format rules)
+var baseDir = AppContext.BaseDirectory;
+var soulPaths = new[] {
+    Path.Combine(baseDir, "..", "..", "..", "..", "AION_SOUL.md"),
+    Path.Combine(baseDir, "AION_SOUL.md"),
+    Path.Combine(configDir, "AION_SOUL.md")
+};
+foreach (var p in soulPaths) { promptBuilder.LoadSoul(p); if (File.Exists(p)) break; }
+
+var protocolPaths = new[] {
+    Path.Combine(baseDir, "..", "..", "..", "..", "AION_PROTOCOL.md"),
+    Path.Combine(baseDir, "AION_PROTOCOL.md"),
+    Path.Combine(configDir, "AION_PROTOCOL.md")
+};
+foreach (var p in protocolPaths) { promptBuilder.LoadProtocol(p); if (File.Exists(p)) break; }
 
 // Agent loop
 var agentLoop = new AgentLoop(

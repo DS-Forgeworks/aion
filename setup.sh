@@ -264,6 +264,9 @@ build_aion() {
     # Copy standalone login page + favicon
     cp "$SRC_DIR/aion-ui/public/login.html" "$PUBLISH_DIR/wwwroot/" 2>/dev/null || true
     cp "$SRC_DIR/aion-ui/public/favicon.svg" "$PUBLISH_DIR/wwwroot/" 2>/dev/null || true
+    # Copy soul and protocol files
+    cp "$SRC_DIR/AION_SOUL.md" "$PUBLISH_DIR/" 2>/dev/null || true
+    cp "$SRC_DIR/AION_PROTOCOL.md" "$PUBLISH_DIR/" 2>/dev/null || true
     ok "Frontend built → dist/wwwroot/"
   else
     warn "No aion-ui/ found — skipping frontend (API-only mode)"
