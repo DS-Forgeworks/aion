@@ -89,7 +89,7 @@ export default function SetupWizard() {
         <div className="setup-card">
           <div className="setup-icon">🎉</div>
           <h2>Setup Complete!</h2>
-          <p>AION is ready to go. Restart the server to apply changes, or continue configuring.</p>
+          <p>AION is ready to go. Your settings are applied immediately.</p>
           <div className="setup-actions">
             <button className="btn-primary" onClick={() => setDone(false)}>
               Back to Setup
