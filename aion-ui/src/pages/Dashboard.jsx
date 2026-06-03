@@ -11,6 +11,9 @@ export default function Dashboard() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [configModel, setConfigModel] = useState('');
 
   useEffect(() => {
     const fetchHealth = async () => {
@@ -29,17 +32,59 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch available models — always fresh, no caching
+  const fetchModels = async () => {
+    try {
+      const res = await fetch('/api/models');
+      if (res.ok) {
+        const data = await res.json();
+        setModels(Array.isArray(data) ? data : []);
+      }
+    } catch {}
+  };
+
+  // Get default model from config
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          const cfg = await res.json();
+          const defaultModel = cfg?.llm?.model || '';
+          setConfigModel(defaultModel);
+          setSelectedModel(defaultModel);
+        }
+      } catch {}
+    };
+    fetchConfig();
+  }, []);
+
   useEffect(() => {
     if (ws.messages.length > 0) {
       setMessages(prev => [...prev, ws.messages[ws.messages.length - 1]].slice(-50));
     }
   }, [ws.messages]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
-    send(null, { text: input.trim() });
-    setMessages(prev => [...prev, { type: 'outgoing', body: { text: input.trim() } }]);
+    setMessages(prev => [...prev, { type: 'outgoing', body: { text: input.trim() }, model: selectedModel }]);
     setInput('');
+
+    try {
+      const res = await fetch(`/api/agents/default/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: input.trim(), mode: 'chat', model: selectedModel || undefined })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setMessages(prev => [...prev, { type: 'incoming', body: { text: data.reply }, model: selectedModel }]);
+      } else {
+        setMessages(prev => [...prev, { type: 'incoming', body: { text: `Error: ${data.error || 'unknown'}` } }]);
+      }
+    } catch (err) {
+      setMessages(prev => [...prev, { type: 'incoming', body: { text: `Network error: ${err.message}` } }]);
+    }
   };
 
   const agentList = Object.values(ws.agents);
@@ -109,9 +154,26 @@ export default function Dashboard() {
 
         <section className="card send-message">
           <h2>Quick Send</h2>
+          <div className="model-selector-bar">
+            <select
+              className="model-dropdown"
+              value={selectedModel}
+              onClick={fetchModels}
+              onChange={(e) => setSelectedModel(e.target.value)}
+            >
+              {models.length === 0 && <option value={configModel}>{configModel || 'Loading...'}</option>}
+              {models.map((m) => (
+                <option key={m.name} value={m.name}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <span className="model-hint">Model shown applies to next message</span>
+          </div>
           <div className="message-list">
             {messages.map((msg, i) => (
               <div key={i} className={`message ${msg.type || 'incoming'}`}>
+                <span className="msg-model-badge">{msg.model || configModel}</span>
                 <span className="msg-content">
                   {typeof msg.body?.text === 'string' ? msg.body.text : JSON.stringify(msg.body)}
                 </span>

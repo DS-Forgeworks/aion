@@ -73,7 +73,7 @@ public class AionController : ControllerBase
         if (!rateCheck.Allowed)
             return StatusCode(429, new { ok = false, error = rateCheck.Error, error_code = "RATE_LIMITED" });
 
-        var request = new AgentRequest(id, "user", req.Text ?? "", req.Mode ?? "chat");
+        var request = new AgentRequest(id, "user", req.Text ?? "", req.Mode ?? "chat", req.Model);
         var result = await _agentLoop.RunAsync(request);
 
         if (!result.Success)
@@ -86,7 +86,7 @@ public class AionController : ControllerBase
     [HttpPost("agents/{id}/task")]
     public async Task<IActionResult> SendTask(string id, [FromBody] TaskRequest req)
     {
-        var request = new AgentRequest(id, "user", req.Text ?? "", "task");
+        var request = new AgentRequest(id, "user", req.Text ?? "", "task", req.Model);
         var result = await _agentLoop.RunAsync(request);
 
         if (!result.Success)
@@ -155,6 +155,32 @@ public class AionController : ControllerBase
         return Ok(entries);
     }
 
+    // GET /api/models — list available Ollama models
+    [HttpGet("models")]
+    public async Task<IActionResult> ListModels()
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var resp = await http.GetStringAsync(
+                $"{_config.Llm.Endpoint ?? "http://127.0.0.1:11434"}/api/tags");
+            var doc = System.Text.Json.JsonDocument.Parse(resp);
+            var models = doc.RootElement.GetProperty("models").EnumerateArray()
+                .Select(m => new {
+                    name = m.GetProperty("name").GetString(),
+                    size = m.GetProperty("size").GetInt64(),
+                    modified = m.GetProperty("modified_at").GetString()
+                })
+                .OrderByDescending(m => m.size)
+                .ToList();
+            return Ok(models);
+        }
+        catch (Exception ex)
+        {
+            return Ok(new { error = ex.Message, models = Array.Empty<object>() });
+        }
+    }
+
     // GET /api/config
     [HttpGet("config")]
     public IActionResult GetConfig()
@@ -217,8 +243,8 @@ public class AionController : ControllerBase
     }
 }
 
-public record MessageRequest(string? Text, string? Mode);
-public record TaskRequest(string? Text, string? Priority);
+public record MessageRequest(string? Text, string? Mode, string? Model);
+public record TaskRequest(string? Text, string? Priority, string? Model = null);
 public record StoreMemoryRequest(string? Content, string? Tags);
 public record RunToolRequest(string? Tool, string? Input);
 public record SetupRequest(SetupLlmRequest? Llm, SetupSafetyRequest? Safety, SetupMeshRequest? Mesh);

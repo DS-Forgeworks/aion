@@ -2,10 +2,24 @@ import { useState, useEffect } from 'react';
 
 export default function Settings() {
   const [config, setConfig] = useState(null);
+  const [models, setModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
+
+  const fetchModels = async () => {
+    setModelsLoading(true);
+    try {
+      const res = await fetch('/api/models');
+      if (res.ok) {
+        const data = await res.json();
+        setModels(Array.isArray(data) ? data : data.models || []);
+      }
+    } catch {}
+    setModelsLoading(false);
+  };
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -20,6 +34,7 @@ export default function Settings() {
       }
     };
     fetchConfig();
+    fetchModels();
   }, []);
 
   const handleSave = async () => {
@@ -32,12 +47,17 @@ export default function Settings() {
         body: JSON.stringify(config),
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
-      setSaveMsg({ type: 'success', text: 'Configuration saved successfully' });
+      setSaveMsg({ type: 'success', text: 'Configuration saved. Restart server to apply.' });
     } catch (err) {
       setSaveMsg({ type: 'error', text: err.message });
     } finally {
       setSaving(false);
     }
+  };
+
+  const formatSize = (bytes) => {
+    const gb = bytes / 1e9;
+    return gb >= 1 ? `${gb.toFixed(1)}GB` : `${(bytes / 1e6).toFixed(0)}MB`;
   };
 
   if (loading) {
@@ -95,14 +115,34 @@ export default function Settings() {
           </div>
           <div className="setting">
             <label>Model</label>
-            <input
-              type="text"
-              value={config?.llm?.model || ''}
-              onChange={(e) => setConfig(prev => ({
-                ...prev, llm: { ...prev.llm, model: e.target.value }
-              }))}
-              placeholder="qwen3:8b"
-            />
+            <div className="model-select-row">
+              <select
+                className="model-dropdown"
+                value={config?.llm?.model || ''}
+                onClick={fetchModels}
+                onChange={(e) => setConfig(prev => ({
+                  ...prev, llm: { ...prev.llm, model: e.target.value }
+                }))}
+              >
+                {modelsLoading && <option value="">Loading models...</option>}
+                {!modelsLoading && models.length === 0 && (
+                  <option value="">No models found</option>
+                )}
+                {models.map((m) => (
+                  <option key={m.name} value={m.name}>
+                    {m.name} ({formatSize(m.size)})
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn-refresh"
+                onClick={fetchModels}
+                title="Refresh model list — always fetches fresh"
+              >
+                ↻
+              </button>
+            </div>
+            <p className="setting-hint">Auto-populated from Ollama. Select any model or type a custom name.</p>
           </div>
           <div className="setting">
             <label>Endpoint</label>

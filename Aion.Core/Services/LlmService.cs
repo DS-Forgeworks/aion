@@ -49,9 +49,10 @@ public class LlmService
 
     private object BuildPayload(LLMRequest request)
     {
+        var modelName = request.Model ?? _config.Llm.Model ?? "qwen3.5:4b";
         return new
         {
-            model = _config.Llm.Model ?? "qwen3:8b",
+            model = modelName,
             messages = new[]
             {
                 new { role = "system", content = request.SystemPrompt },

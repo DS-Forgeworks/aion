@@ -77,7 +77,7 @@ public class AgentLoop : IAgentLoop
                 _retryCount++;
                 _logger.Debug("AgentLoop", $"LLM call attempt {_retryCount}/{MaxRetries}", request.AgentId);
 
-                var llmRequest = new LLMRequest(systemPrompt, request.Input);
+                var llmRequest = new LLMRequest(systemPrompt, request.Input, Model: request.Model);
                 string llmResponse;
 
                 try

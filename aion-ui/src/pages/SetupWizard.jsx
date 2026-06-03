@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const STEPS = [
   { id: 'welcome', label: 'Welcome' },
@@ -12,7 +12,7 @@ export default function SetupWizard() {
   const [step, setStep] = useState(0);
   const [config, setConfig] = useState({
     provider: 'ollama',
-    model: 'qwen3:8b',
+    model: '',
     apiKey: '',
     endpoint: '',
     safeMode: true,
@@ -20,9 +20,28 @@ export default function SetupWizard() {
     meshEnabled: false,
     meshPort: 6970,
   });
+  const [models, setModels] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const res = await fetch('/api/models');
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : data.models || [];
+          setModels(list);
+          // Set default model from available list
+          if (list.length > 0 && !config.model) {
+            setConfig(prev => ({ ...prev, model: list[0].name }));
+          }
+        }
+      } catch {}
+    };
+    fetchModels();
+  }, []);
 
   const update = (key, value) => {
     setConfig(prev => ({ ...prev, [key]: value }));
@@ -82,6 +101,11 @@ export default function SetupWizard() {
     );
   }
 
+  const formatSize = (bytes) => {
+    const gb = bytes / 1e9;
+    return gb >= 1 ? `${gb.toFixed(1)}GB` : `${(bytes / 1e6).toFixed(0)}MB`;
+  };
+
   return (
     <div className="setup-wizard">
       <div className="setup-card">
@@ -106,7 +130,9 @@ export default function SetupWizard() {
               <p>You'll need:</p>
               <ul>
                 <li>An LLM provider (Ollama, OpenAI, or DeepSeek)</li>
-                <li>A model to use (default: qwen3:8b)</li>
+                {models.length > 0 && (
+                  <li>Models detected: {models.map(m => m.name).join(', ')}</li>
+                )}
                 <li>Optional: API key for OpenAI/DeepSeek</li>
               </ul>
             </>
@@ -125,12 +151,25 @@ export default function SetupWizard() {
               </div>
               <div className="setup-field">
                 <label>Model</label>
-                <input
-                  type="text"
-                  value={config.model}
-                  onChange={(e) => update('model', e.target.value)}
-                  placeholder="qwen3:8b"
-                />
+                {config.provider === 'ollama' && models.length > 0 ? (
+                  <select value={config.model} onChange={(e) => update('model', e.target.value)}>
+                    {models.map((m) => (
+                      <option key={m.name} value={m.name}>
+                        {m.name} ({formatSize(m.size)})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={config.model}
+                    onChange={(e) => update('model', e.target.value)}
+                    placeholder={models.length > 0 ? models[0].name : 'qwen3:8b'}
+                  />
+                )}
+                {config.provider === 'ollama' && models.length === 0 && (
+                  <p className="field-hint">No models detected from Ollama. Type a model name manually.</p>
+                )}
               </div>
               {config.provider !== 'ollama' && (
                 <div className="setup-field">
@@ -216,7 +255,7 @@ export default function SetupWizard() {
               <h2>Confirm Settings</h2>
               <div className="setup-summary">
                 <div className="summary-row"><span>Provider:</span><span>{config.provider}</span></div>
-                <div className="summary-row"><span>Model:</span><span>{config.model}</span></div>
+                <div className="summary-row"><span>Model:</span><span>{config.model || '(none selected)'}</span></div>
                 <div className="summary-row"><span>Endpoint:</span><span>{config.endpoint || '(default)'}</span></div>
                 <div className="summary-row"><span>Safe Mode:</span><span>{config.safeMode ? 'Yes' : 'No'}</span></div>
                 <div className="summary-row"><span>Shell:</span><span>{config.shellEnabled ? 'Enabled' : 'Disabled'}</span></div>
