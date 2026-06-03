@@ -358,26 +358,14 @@ create_config() {
   local CONFIG_FILE="$HOME/.aion/aion-config.json"
   mkdir -p "$HOME/.aion"
 
-  # Detect best available local model
-  local DEFAULT_MODEL="qwen3.5:4b"
-  if command -v ollama &>/dev/null && curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-    local MODELS_JSON
-    MODELS_JSON="$(curl -sf http://127.0.0.1:11434/api/tags 2>/dev/null || echo '{"models":[]}')"
-    # Find largest model under 10GB for best quality
-    local BEST
-    BEST="$(echo "$MODELS_JSON" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)"
-    [ -n "$BEST" ] && DEFAULT_MODEL="$BEST"
-    info "Best local model detected: $DEFAULT_MODEL"
-  fi
-
-  cat > "$CONFIG_FILE" << CONFIG
+  cat > "$CONFIG_FILE" << 'CONFIG'
 {
   "Version": 1,
   "Workspace": "~/.aion/workspace",
   "Language": "en",
   "Llm": {
     "Provider": "ollama",
-    "Model": "$DEFAULT_MODEL",
+    "Model": null,
     "Endpoint": "http://127.0.0.1:11434",
     "ApiKey": null
   },
@@ -391,7 +379,7 @@ create_config() {
   }
 }
 CONFIG
-  ok "Config created at $CONFIG_FILE (model: $DEFAULT_MODEL)"
+  ok "Config created at $CONFIG_FILE (no default model — select from available models in UI)"
 }
 
 # ──────────────────────────────────────────────────────────

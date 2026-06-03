@@ -164,11 +164,11 @@ export default function SetupWizard() {
                     type="text"
                     value={config.model}
                     onChange={(e) => update('model', e.target.value)}
-                    placeholder={models.length > 0 ? models[0].name : 'qwen3:8b'}
+                    placeholder={models.length > 0 ? models[0].name : 'e.g. llama3:8b'}
                   />
                 )}
                 {config.provider === 'ollama' && models.length === 0 && (
-                  <p className="field-hint">No models detected from Ollama. Type a model name manually.</p>
+                  <p className="field-hint">No models found. Make sure Ollama is running and has models pulled.</p>
                 )}
               </div>
               {config.provider !== 'ollama' && (

@@ -299,7 +299,7 @@ export default function Dashboard() {
               onClick={fetchModels}
               onChange={(e) => setSelectedModel(e.target.value)}
             >
-              {models.length === 0 && <option value={configModel}>{configModel || 'Loading...'}</option>}
+              {models.length === 0 && <option value={configModel}>{configModel || 'Select a model...'}</option>}
               {models.map((m) => (
                 <option key={m.name} value={m.name}>
                   {m.name}
