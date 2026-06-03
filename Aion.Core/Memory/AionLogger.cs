@@ -17,6 +17,7 @@ public class AionLogger : IAionLogger
     public void Log(LogLevel level, string source, string message, string? agentId = null,
         string? runId = null, object? data = null)
     {
+        try { Console.Error.WriteLine($"[{level}] [{source}] {message}"); } catch { }
         var entry = new LogEntry(
             DateTime.UtcNow.ToString("O"),
             level, source, agentId, runId, message, data

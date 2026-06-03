@@ -9,6 +9,7 @@ using Aion.Core.Repair;
 using Aion.Core.Safety;
 using Aion.Core.Services;
 using Aion.Core.Tools;
+using Aion.Core.Planning;
 using Aion.Core.Tools.Builtin;
 using Aion.Core.Mesh;
 
@@ -96,9 +97,12 @@ var protocolPaths = new[] {
 };
 foreach (var p in protocolPaths) { promptBuilder.LoadProtocol(p); if (File.Exists(p)) break; }
 
+// Plan extractor
+var planExtractor = new PlanExtractor(repairer, logger);
+
 // Agent loop
 var agentLoop = new AgentLoop(
-    llmService, promptBuilder, toolRegistry, repairer,
+    llmService, promptBuilder, toolRegistry, planExtractor,
     scorer, safety, memoryStore, planStore, sanitizer, logger);
 
 // Mesh

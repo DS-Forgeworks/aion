@@ -121,6 +121,8 @@ public class ReadFileTool : ITool
         {
             var parsed = JsonDocument.Parse(input);
             if (parsed.RootElement.TryGetProperty("path", out var p)) return p.GetString() ?? "";
+            if (parsed.RootElement.TryGetProperty("filename", out var f)) return f.GetString() ?? "";
+            if (parsed.RootElement.TryGetProperty("file", out var fl)) return fl.GetString() ?? "";
         }
         catch { }
         return input.Trim().Trim('"');
