@@ -75,9 +75,9 @@ public class CalculatorTool : ITool
             if (string.IsNullOrEmpty(expr))
                 return Task.FromResult(ToolResult.Fail("No expression found"));
 
-            // Use a simple DataTable-based eval (safe, no reflection abuse)
-            var dt = new System.Data.DataTable();
-            var result = dt.Compute(expr, "");
+            // Use NCalc for robust expression evaluation
+            var expression = new NCalc.Expression(expr);
+            var result = expression.Evaluate();
             return Task.FromResult(ToolResult.Ok($"{result}"));
         }
         catch (Exception ex)

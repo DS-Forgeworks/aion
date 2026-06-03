@@ -120,12 +120,26 @@ public class ReadFileTool : ITool
         try
         {
             var parsed = JsonDocument.Parse(input);
-            if (parsed.RootElement.TryGetProperty("path", out var p)) return p.GetString() ?? "";
-            if (parsed.RootElement.TryGetProperty("filename", out var f)) return f.GetString() ?? "";
-            if (parsed.RootElement.TryGetProperty("file", out var fl)) return fl.GetString() ?? "";
+            if (parsed.RootElement.TryGetProperty("path", out var p)) return ResolvePath(p.GetString() ?? "");
+            if (parsed.RootElement.TryGetProperty("filename", out var f)) return ResolvePath(f.GetString() ?? "");
+            if (parsed.RootElement.TryGetProperty("file", out var fl)) return ResolvePath(fl.GetString() ?? "");
         }
         catch { }
-        return input.Trim().Trim('"');
+        return ResolvePath(input.Trim().Trim('"'));
+    }
+
+    private string ResolvePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "";
+        // Expand ~ to home directory
+        if (path.StartsWith("~/"))
+            path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..]);
+        if (path.StartsWith("/home/user/") || path.StartsWith("/home/"))
+        {
+            var rest = path[path.IndexOf('/', 5)..]; // after /home/xxx/foo → /foo
+            path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), rest.TrimStart('/'));
+        }
+        return path;
     }
 }
 
