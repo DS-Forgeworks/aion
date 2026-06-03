@@ -71,6 +71,33 @@ toolRegistry.RegisterAlias("write", "write_file");
 toolRegistry.RegisterAlias("search", "web_search");
 toolRegistry.RegisterAlias("remind", "schedule");
 
+// Common LLM hallucinated tool names
+toolRegistry.RegisterAlias("file_read", "read_file");
+toolRegistry.RegisterAlias("readfile", "read_file");
+toolRegistry.RegisterAlias("file", "read_file");
+toolRegistry.RegisterAlias("open", "read_file");
+toolRegistry.RegisterAlias("writefile", "write_file");
+toolRegistry.RegisterAlias("file_write", "write_file");
+toolRegistry.RegisterAlias("save", "write_file");
+toolRegistry.RegisterAlias("websearch", "web_search");
+toolRegistry.RegisterAlias("ddg", "web_search");
+toolRegistry.RegisterAlias("fetch", "web_fetch");
+toolRegistry.RegisterAlias("get", "web_fetch");
+toolRegistry.RegisterAlias("calc", "calculator");
+toolRegistry.RegisterAlias("math", "calculator");
+toolRegistry.RegisterAlias("datetime", "now");
+toolRegistry.RegisterAlias("date", "now");
+toolRegistry.RegisterAlias("current_time", "now");
+toolRegistry.RegisterAlias("memorize", "remember");
+toolRegistry.RegisterAlias("store", "remember");
+toolRegistry.RegisterAlias("forget", "recall");
+toolRegistry.RegisterAlias("timer", "schedule");
+toolRegistry.RegisterAlias("delay", "schedule");
+toolRegistry.RegisterAlias("bash", "shell_command");
+toolRegistry.RegisterAlias("terminal", "shell_command");
+toolRegistry.RegisterAlias("command", "shell_command");
+toolRegistry.RegisterAlias("run", "shell_command");
+
 // Sandbox (needed by DynamicTool for agent-created tools)
 var sandbox = new SandboxTool();
 
