@@ -22,12 +22,14 @@ public class AionController : ControllerBase
     private readonly IRateLimiter _rateLimiter;
     private readonly ISafetyGate _safety;
     private readonly AppConfig _config;
+    private readonly IConversationStore _convStore;
 
     public AionController(
         AgentLoop agentLoop, ToolRegistry toolRegistry,
         IMemoryStore memory, IPlanStore planStore,
         IAionLogger logger, IRateLimiter rateLimiter,
-        ISafetyGate safety, AppConfig config)
+        ISafetyGate safety, AppConfig config,
+        IConversationStore convStore)
     {
         _agentLoop = agentLoop;
         _toolRegistry = toolRegistry;
@@ -37,6 +39,7 @@ public class AionController : ControllerBase
         _rateLimiter = rateLimiter;
         _safety = safety;
         _config = config;
+        _convStore = convStore;
     }
 
     // GET /api/health
@@ -65,7 +68,83 @@ public class AionController : ControllerBase
     [HttpGet("tools")]
     public IActionResult ListTools() => Ok(_toolRegistry.GetDefinitions());
 
-    // POST /api/agents/{id}/message
+    // POST /api/conversations — create a new conversation
+    [HttpPost("conversations")]
+    public async Task<IActionResult> CreateConversation([FromBody] CreateConversationRequest req)
+    {
+        var conv = await _convStore.CreateConversationAsync(
+            req.Title ?? "New Conversation", req.AgentId ?? "default", req.UserId, req.Model);
+        return Ok(new { ok = true, conversation = conv });
+    }
+
+    // GET /api/conversations — list all
+    [HttpGet("conversations")]
+    public async Task<IActionResult> ListConversations([FromQuery] string? agent_id, [FromQuery] int limit = 50)
+    {
+        var list = await _convStore.ListConversationsAsync(agent_id, limit);
+        return Ok(new { ok = true, conversations = list });
+    }
+
+    // GET /api/conversations/{id} — get one
+    [HttpGet("conversations/{id}")]
+    public async Task<IActionResult> GetConversation(string id)
+    {
+        var conv = await _convStore.GetConversationAsync(id);
+        if (conv == null) return NotFound(new { ok = false, error = "Conversation not found" });
+        return Ok(new { ok = true, conversation = conv });
+    }
+
+    // DELETE /api/conversations/{id}
+    [HttpDelete("conversations/{id}")]
+    public async Task<IActionResult> DeleteConversation(string id)
+    {
+        await _convStore.DeleteConversationAsync(id);
+        return Ok(new { ok = true });
+    }
+
+    // POST /api/conversations/{id}/pin
+    [HttpPost("conversations/{id}/pin")]
+    public async Task<IActionResult> PinConversation(string id)
+    {
+        await _convStore.PinConversationAsync(id, true);
+        return Ok(new { ok = true });
+    }
+
+    // POST /api/conversations/{id}/unpin
+    [HttpPost("conversations/{id}/unpin")]
+    public async Task<IActionResult> UnpinConversation(string id)
+    {
+        await _convStore.PinConversationAsync(id, false);
+        return Ok(new { ok = true });
+    }
+
+    // GET /api/conversations/{id}/messages — get message history
+    [HttpGet("conversations/{id}/messages")]
+    public async Task<IActionResult> GetMessages(string id, [FromQuery] int limit = 100)
+    {
+        var msgs = await _convStore.GetMessagesAsync(id, limit);
+        return Ok(new { ok = true, messages = msgs });
+    }
+
+    // PUT /api/messages/{id} — edit a message
+    [HttpPut("messages/{id}")]
+    public async Task<IActionResult> EditMessage(string id, [FromBody] EditMessageRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Content))
+            return BadRequest(new { ok = false, error = "Content required" });
+        await _convStore.EditMessageAsync(id, req.Content);
+        return Ok(new { ok = true });
+    }
+
+    // DELETE /api/messages/{id}
+    [HttpDelete("messages/{id}")]
+    public async Task<IActionResult> DeleteMessage(string id)
+    {
+        await _convStore.DeleteMessageAsync(id);
+        return Ok(new { ok = true });
+    }
+
+    // POST /api/agents/{id}/message — send with conversation persistence
     [HttpPost("agents/{id}/message")]
     public async Task<IActionResult> SendMessage(string id, [FromBody] MessageRequest req)
     {
@@ -73,13 +152,43 @@ public class AionController : ControllerBase
         if (!rateCheck.Allowed)
             return StatusCode(429, new { ok = false, error = rateCheck.Error, error_code = "RATE_LIMITED" });
 
+        // Find or create conversation
+        Conversation conv;
+        if (!string.IsNullOrEmpty(req.ConversationId))
+        {
+            var existing = await _convStore.GetConversationAsync(req.ConversationId);
+            if (existing != null) conv = existing;
+            else conv = await _convStore.CreateConversationAsync(req.Text?[..Math.Min(req.Text.Length, 60)] ?? "Chat", id, "user", req.Model);
+        }
+        else
+        {
+            conv = await _convStore.CreateConversationAsync(req.Text?[..Math.Min(req.Text.Length, 60)] ?? "Chat", id, "user", req.Model);
+        }
+
+        // Store user message
+        await _convStore.AddMessageAsync(conv.Id, "user", req.Text ?? "", req.Model);
+
+        // Send to agent
         var request = new AgentRequest(id, "user", req.Text ?? "", req.Mode ?? "chat", req.Model);
         var result = await _agentLoop.RunAsync(request);
 
-        if (!result.Success)
-            return StatusCode(500, new { ok = false, error = result.Error, error_code = "AGENT_ERROR" });
+        // Store assistant reply
+        var replyContent = result.Reply ?? result.Error ?? "I had trouble processing that. Could you clarify what you need?";
+        if (!result.Success && result.Error != null)
+        {
+            replyContent = "I'm not sure I understood correctly. Could you rephrase or clarify what you're looking for?";
+        }
+        await _convStore.AddMessageAsync(conv.Id, "assistant", replyContent, req.Model);
 
-        return Ok(new { ok = true, reply = result.Reply });
+        // Update title on first message
+        var msgs = await _convStore.GetMessagesAsync(conv.Id, 2);
+        if (msgs.Count <= 2)
+        {
+            conv.Title = req.Text?.Length > 60 ? req.Text[..57] + "..." : req.Text ?? "Chat";
+            await _convStore.UpdateConversationAsync(conv);
+        }
+
+        return Ok(new { ok = result.Success || true, reply = replyContent, conversation_id = conv.Id });
     }
 
     // POST /api/agents/{id}/task
@@ -272,7 +381,7 @@ public class AionController : ControllerBase
 }
 
 public record CreateToolRequest(string? Name, string? Description, string? Code, string? Language);
-public record MessageRequest(string? Text, string? Mode, string? Model);
+public record MessageRequest(string? Text, string? Mode, string? Model, string? ConversationId = null);
 public record TaskRequest(string? Text, string? Priority, string? Model = null);
 public record StoreMemoryRequest(string? Content, string? Tags);
 public record RunToolRequest(string? Tool, string? Input);
@@ -280,6 +389,8 @@ public record SetupRequest(SetupLlmRequest? Llm, SetupSafetyRequest? Safety, Set
 public record SetupLlmRequest(string? Provider, string? Model, string? Endpoint, string? ApiKey);
 public record SetupSafetyRequest(bool SafeMode, bool ShellEnabled);
 public record SetupMeshRequest(bool Enabled, int Port);
+public record CreateConversationRequest(string? Title, string? AgentId, string? UserId, string? Model);
+public record EditMessageRequest(string? Content);
 
 static class MaskHelper
 {

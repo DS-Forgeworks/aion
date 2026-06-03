@@ -41,6 +41,7 @@ rateLimiter.Configure("mesh_messages", 20, 10000);
 // Memory
 var memoryStore = new SqliteMemoryStore($"Data Source={dbPath}");
 var planStore = new SqlitePlanStore($"Data Source={dbPath}");
+var convStore = new SqliteConversationStore($"Data Source={dbPath}");
 
 // Tools
 var toolRegistry = new ToolRegistry();
@@ -89,6 +90,7 @@ builder.Services.AddSingleton(safety as ISafetyGate);
 builder.Services.AddSingleton(rateLimiter as IRateLimiter);
 builder.Services.AddSingleton(memoryStore as IMemoryStore);
 builder.Services.AddSingleton(planStore as IPlanStore);
+builder.Services.AddSingleton(convStore as IConversationStore);
 builder.Services.AddSingleton(toolRegistry);
 builder.Services.AddSingleton(llmService);
 builder.Services.AddSingleton(promptBuilder);

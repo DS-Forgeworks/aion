@@ -140,6 +140,153 @@ a:hover { text-decoration: underline; }
   color: rgba(255, 255, 255, 0.8);
 }
 
+/* Message actions (edit/retry) */
+.msg-actions {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.message:hover .msg-actions {
+  opacity: 1;
+}
+.msg-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.1rem 0.2rem;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  line-height: 1;
+}
+.msg-btn:hover {
+  background: rgba(255,255,255,0.1);
+}
+.msg-edit-row {
+  display: flex;
+  gap: 0.3rem;
+}
+.msg-edit-row input {
+  flex: 1;
+  padding: 0.25rem 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.msg-edit-row button {
+  padding: 0.2rem 0.5rem;
+  background: var(--primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+/* Chat header */
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.chat-header h2 {
+  margin-bottom: 0;
+}
+.chat-header-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+.btn-chat-history, .btn-chat-new {
+  padding: 0.25rem 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.btn-chat-history:hover, .btn-chat-new:hover {
+  background: var(--primary);
+  color: white;
+}
+
+/* Conversation history slide-out */
+.conv-history-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  margin-bottom: 0.75rem;
+  max-height: 250px;
+  overflow-y: auto;
+}
+.conv-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.btn-close-panel {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.conv-list {
+  padding: 0.25rem 0;
+}
+.conv-empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+.conv-item {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  position: relative;
+  transition: background 0.1s;
+}
+.conv-item:hover { background: var(--surface); }
+.conv-item.active { background: rgba(108, 99, 255, 0.1); border-left: 2px solid var(--primary); }
+.conv-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2rem;
+}
+.conv-meta {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+.conv-delete {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.7rem;
+  opacity: 0;
+  padding: 0.15rem;
+}
+.conv-item:hover .conv-delete { opacity: 1; }
+
 .sidebar-footer {
   padding-top: 1rem;
   border-top: 1px solid var(--border);
@@ -224,12 +371,12 @@ a:hover { text-decoration: underline; }
 
 /* Message list */
 .message-list {
-  max-height: 300px;
+  max-height: 350px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 .message {
   padding: 0.5rem;

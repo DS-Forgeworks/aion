@@ -14,6 +14,12 @@ export default function Dashboard() {
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [configModel, setConfigModel] = useState('');
+  const [conversations, setConversations] = useState([]);
+  const [currentConvId, setCurrentConvId] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [editingMsgId, setEditingMsgId] = useState(null);
+  const [editText, setEditText] = useState('');
 
   useEffect(() => {
     const fetchHealth = async () => {
@@ -32,13 +38,22 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch available models — always fresh, no caching
   const fetchModels = async () => {
     try {
       const res = await fetch('/api/models');
       if (res.ok) {
         const data = await res.json();
         setModels(Array.isArray(data) ? data : []);
+      }
+    } catch {}
+  };
+
+  const fetchConversations = async () => {
+    try {
+      const res = await fetch('/api/conversations');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.conversations) setConversations(data.conversations);
       }
     } catch {}
   };
@@ -57,6 +72,7 @@ export default function Dashboard() {
       } catch {}
     };
     fetchConfig();
+    fetchConversations();
   }, []);
 
   useEffect(() => {
@@ -65,26 +81,106 @@ export default function Dashboard() {
     }
   }, [ws.messages]);
 
+  const loadConversation = async (convId) => {
+    try {
+      const res = await fetch(`/api/conversations/${convId}/messages`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.messages) {
+          setMessages(data.messages.map(m => ({
+            type: m.role === 'user' ? 'outgoing' : 'incoming',
+            body: { text: m.content },
+            model: m.model,
+            id: m.id,
+            edited: m.edited
+          })));
+          setCurrentConvId(convId);
+        }
+      }
+    } catch {}
+  };
+
   const handleSend = async () => {
-    if (!input.trim()) return;
-    setMessages(prev => [...prev, { type: 'outgoing', body: { text: input.trim() }, model: selectedModel }]);
+    if (!input.trim() || sending) return;
+    setSending(true);
+
+    const userMsg = input.trim();
+    setMessages(prev => [...prev, { type: 'outgoing', body: { text: userMsg }, model: selectedModel }]);
     setInput('');
 
     try {
       const res = await fetch(`/api/agents/default/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: input.trim(), mode: 'chat', model: selectedModel || undefined })
+        body: JSON.stringify({
+          text: userMsg,
+          mode: 'chat',
+          model: selectedModel || undefined,
+          conversation_id: currentConvId || undefined
+        })
       });
       const data = await res.json();
-      if (data.ok) {
+      if (data.reply) {
         setMessages(prev => [...prev, { type: 'incoming', body: { text: data.reply }, model: selectedModel }]);
+        // Update current conversation ID from response
+        if (data.conversation_id && data.conversation_id !== currentConvId) {
+          setCurrentConvId(data.conversation_id);
+        }
       } else {
-        setMessages(prev => [...prev, { type: 'incoming', body: { text: `Error: ${data.error || 'unknown'}` } }]);
+        setMessages(prev => [...prev, { type: 'incoming', body: { text: `Could you clarify what you mean? I'm not sure I understood.` } }]);
       }
     } catch (err) {
       setMessages(prev => [...prev, { type: 'incoming', body: { text: `Network error: ${err.message}` } }]);
+    } finally {
+      setSending(false);
+      fetchConversations(); // refresh sidebar
     }
+  };
+
+  const handleEdit = async (msgId, newContent) => {
+    if (!newContent.trim()) return;
+    try {
+      await fetch(`/api/messages/${msgId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newContent })
+      });
+      setMessages(prev => prev.map(m =>
+        m.id === msgId ? { ...m, body: { ...m.body, text: newContent }, edited: true } : m
+      ));
+      setEditingMsgId(null);
+      setEditText('');
+    } catch {}
+  };
+
+  const handleRetry = (msgIdx) => {
+    // Find the last user message before this assistant message
+    for (let i = msgIdx - 1; i >= 0; i--) {
+      if (messages[i].type === 'outgoing') {
+        // Remove the failed reply and this one, resend the user message
+        const lastUserMsg = messages[i].body.text;
+        setMessages(prev => prev.slice(0, msgIdx));
+        setInput(lastUserMsg);
+        break;
+      }
+    }
+  };
+
+  const newConversation = () => {
+    setMessages([]);
+    setCurrentConvId(null);
+  };
+
+  const deleteConversation = async (convId, e) => {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/conversations/${convId}`, { method: 'DELETE' });
+      if (currentConvId === convId) {
+        setMessages([]);
+        setCurrentConvId(null);
+      }
+      fetchConversations();
+    } catch {}
   };
 
   const agentList = Object.values(ws.agents);
@@ -102,6 +198,11 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const formatTime = (ts) => {
+    const d = new Date(ts);
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <div className="page dashboard">
@@ -153,7 +254,44 @@ export default function Dashboard() {
         </section>
 
         <section className="card send-message">
-          <h2>Quick Send</h2>
+          <div className="chat-header">
+            <h2>Chat</h2>
+            <div className="chat-header-actions">
+              <button className="btn-chat-history" onClick={() => { fetchConversations(); setShowHistory(!showHistory); }} title="Conversation history">
+                ☰
+              </button>
+              <button className="btn-chat-new" onClick={newConversation} title="New conversation">+</button>
+            </div>
+          </div>
+
+          {/* Slide-out conversation history panel */}
+          {showHistory && (
+            <div className="conv-history-panel">
+              <div className="conv-history-header">
+                <span>Conversations</span>
+                <button className="btn-close-panel" onClick={() => setShowHistory(false)}>✕</button>
+              </div>
+              <div className="conv-list">
+                {conversations.length === 0 && (
+                  <div className="conv-empty">No conversations yet</div>
+                )}
+                {conversations.map(conv => (
+                  <div
+                    key={conv.id}
+                    className={`conv-item ${conv.id === currentConvId ? 'active' : ''}`}
+                    onClick={() => { loadConversation(conv.id); setShowHistory(false); }}
+                  >
+                    <div className="conv-title">{conv.title}</div>
+                    <div className="conv-meta">
+                      {conv.messageCount} msgs · {formatTime(conv.updatedAt)}
+                    </div>
+                    <button className="conv-delete" onClick={(e) => deleteConversation(conv.id, e)} title="Delete">🗑</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="model-selector-bar">
             <select
               className="model-dropdown"
@@ -168,18 +306,51 @@ export default function Dashboard() {
                 </option>
               ))}
             </select>
-            <span className="model-hint">Model shown applies to next message</span>
+            <span className="model-hint">{currentConvId ? 'Continuing conversation' : 'New conversation'}</span>
           </div>
+
           <div className="message-list">
+            {messages.length === 0 && (
+              <div className="empty-state small">
+                <p>Start a conversation</p>
+                <p className="hint">Type a message below to begin</p>
+              </div>
+            )}
             {messages.map((msg, i) => (
               <div key={i} className={`message ${msg.type || 'incoming'}`}>
-                <span className="msg-model-badge">{msg.model || configModel}</span>
-                <span className="msg-content">
-                  {typeof msg.body?.text === 'string' ? msg.body.text : JSON.stringify(msg.body)}
-                </span>
+                {editingMsgId === msg.id ? (
+                  <div className="msg-edit-row">
+                    <input
+                      type="text"
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleEdit(msg.id, editText)}
+                      autoFocus
+                    />
+                    <button onClick={() => handleEdit(msg.id, editText)}>Save</button>
+                    <button onClick={() => setEditingMsgId(null)}>Cancel</button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="msg-model-badge">{msg.model || configModel}</span>
+                    <span className="msg-content">
+                      {typeof msg.body?.text === 'string' ? msg.body.text : JSON.stringify(msg.body)}
+                    </span>
+                    <div className="msg-actions">
+                      {msg.type === 'outgoing' && (
+                        <button className="msg-btn" onClick={() => { setEditingMsgId(msg.id); setEditText(msg.body.text); }} title="Edit">✏️</button>
+                      )}
+                      {msg.type === 'incoming' && (
+                        <button className="msg-btn" onClick={() => handleRetry(i)} title="Retry">🔄</button>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             ))}
+            {sending && <div className="message incoming"><span className="msg-content">Thinking...</span></div>}
           </div>
+
           <div className="input-row">
             <input
               type="text"
@@ -187,8 +358,11 @@ export default function Dashboard() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Type a message..."
+              disabled={sending}
             />
-            <button onClick={handleSend}>Send</button>
+            <button onClick={handleSend} disabled={sending}>
+              {sending ? '...' : 'Send'}
+            </button>
           </div>
         </section>
       </div>
