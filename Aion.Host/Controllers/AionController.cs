@@ -265,13 +265,19 @@ public class AionController : ControllerBase
 
         // Store assistant reply
         var replyContent = result.Reply ?? result.Error ?? "I had trouble processing that. Could you clarify what you need?";
-        if (!result.Success && result.Error != null)
+        if (!result.Success && result.Error != null && string.IsNullOrWhiteSpace(result.Reply))
         {
             replyContent = "I'm not sure I understood correctly. Could you rephrase or clarify what you're looking for?";
         }
 
-        // Strip JSON blobs from reply — agents sometimes return raw tool output as JSON
+        // Strip JSON blobs from reply
         replyContent = ReplyHelper.StripJsonFromReply(replyContent);
+
+        // Final sanity: never show empty or "Got it. What's next?" if we had real content
+        if (string.IsNullOrWhiteSpace(replyContent) || replyContent == "Got it. What's next?" || replyContent == "Got it. What would you like to do next?" || replyContent == "I'm here. What would you like to work on?")
+        {
+            replyContent = "I'm here. What would you like to work on?";
+        }
 
         await _convStore.AddMessageAsync(conv.Id, "assistant", replyContent, req.Model);
 
@@ -674,7 +680,7 @@ static class ReplyHelper
             if (contentMatch.Success)
                 return System.Text.RegularExpressions.Regex.Unescape(contentMatch.Groups[1].Value);
 
-            return "Got it. What's next?";
+            return "I'm here. What would you like to work on?";
         }
 
         // 4. Remove tool action prefixes
@@ -688,6 +694,6 @@ static class ReplyHelper
             }
         }
 
-        return string.IsNullOrWhiteSpace(text) ? "Got it. What's next?" : text;
+        return string.IsNullOrWhiteSpace(text) ? "I'm here. What would you like to work on?" : text;
     }
 }
