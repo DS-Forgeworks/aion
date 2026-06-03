@@ -76,17 +76,20 @@ check_source() {
     return 0
   fi
 
-  # If running from pipe, clone the repo automatically
+  # If running from pipe, clone the repo
   if [ -z "$SRC_DIR" ] || [ ! -d "$SRC_DIR/Aion.Host" ]; then
     local TARGET="${PWD}/aion"
-    warn "Source not found. Cloning to $TARGET..."
-    command -v git &>/dev/null || install_git
-    git clone https://github.com/DS-Forgeworks/aion.git "$TARGET" 2>&1 | tail -3
-    if [ -d "$TARGET/Aion.Host" ]; then
+    warn "Source not found. Attempting to clone to $TARGET..."
+    command -v git &>/dev/null || install_git || fail "git not found. Install git first."
+    if git clone https://github.com/DS-Forgeworks/aion.git "$TARGET" 2>&1 | tail -3; then
       SRC_DIR="$TARGET"
       ok "Source cloned to $SRC_DIR"
     else
-      fail "Clone failed. Try: git clone https://github.com/DS-Forgeworks/aion.git && cd aion && bash setup.sh"
+      warn "Clone failed — the repo may be private."
+      warn "Make sure you have authenticated with GitHub first:"
+      warn "  git clone https://github.com/DS-Forgeworks/aion.git"
+      warn "  cd aion && bash setup.sh"
+      fail "Use the two-step clone method above."
     fi
   fi
 }
@@ -258,6 +261,9 @@ build_aion() {
 
     mkdir -p "$PUBLISH_DIR/wwwroot"
     cp -r "$SRC_DIR/aion-ui/dist/"* "$PUBLISH_DIR/wwwroot/"
+    # Copy standalone login page + favicon
+    cp "$SRC_DIR/aion-ui/public/login.html" "$PUBLISH_DIR/wwwroot/" 2>/dev/null || true
+    cp "$SRC_DIR/aion-ui/public/favicon.svg" "$PUBLISH_DIR/wwwroot/" 2>/dev/null || true
     ok "Frontend built → dist/wwwroot/"
   else
     warn "No aion-ui/ found — skipping frontend (API-only mode)"
