@@ -65,5 +65,16 @@ public class ToolRegistry
         return _tools.ContainsKey(name) || _aliases.ContainsKey(name);
     }
 
+    /// <summary>
+    /// Execute a tool by name (or alias) with the given input string.
+    /// Returns null if the tool is not found.
+    /// </summary>
+    public async Task<ToolResult?> ExecuteAsync(string name, string input, CancellationToken ct = default)
+    {
+        var tool = Resolve(name);
+        if (tool == null) return null;
+        return await tool.ExecuteAsync(input, ct);
+    }
+
     public int Count => _tools.Count;
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Aion.Core.Interfaces;
 using Aion.Core.Repair;
 using Aion.Core.Services;
@@ -106,7 +107,7 @@ public class AgentLoop : IAgentLoop
                 var score = _scorer.Score(llmResponse, parsed.Json ?? "", null);
                 _logger.Debug("AgentLoop", $"Confidence score: {score.Score:F2}", request.AgentId, data: new { signals = score.Signals });
 
-                if (score.Score < 0.40)
+                if (score.Score < 0.35)
                 {
                     _logger.Warn("AgentLoop", $"Low confidence ({score.Score:F2}), retrying", request.AgentId);
                     if (_retryCount >= MaxRetries)
@@ -114,7 +115,15 @@ public class AgentLoop : IAgentLoop
                     continue;
                 }
 
-                // 5. Store to memory
+                // 5. Execute any tool calls in the JSON response
+                var toolResult = await ExecuteToolCalls(parsed.Json!, request, ct);
+                if (toolResult != null)
+                {
+                    // Tool was executed — return the result to the user
+                    return new AgentResult(true, toolResult, null, null);
+                }
+
+                // 6. Store to memory
                 await _memory.StoreAsync(new MemoryEntry(
                     Guid.NewGuid().ToString(),
                     $"User: {request.Input}\nAgent: {llmResponse}",
@@ -135,6 +144,72 @@ public class AgentLoop : IAgentLoop
         {
             _logger.Error("AgentLoop", $"Unhandled error: {ex.Message}", request.AgentId, data: new { ex.StackTrace });
             return new AgentResult(false, null, null, $"Internal error: {ex.Message}");
+        }
+    }
+
+    private async Task<string?> ExecuteToolCalls(string json, AgentRequest request, CancellationToken ct)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Find tool calls — either root is an array or a single object
+            JsonElement.ArrayEnumerator calls;
+            if (root.ValueKind == JsonValueKind.Array)
+                calls = root.EnumerateArray();
+            else
+                return null; // not a tool call format
+
+            foreach (var call in calls)
+            {
+                if (!call.TryGetProperty("tool", out var toolNameEl)) continue;
+                var toolName = toolNameEl.GetString();
+                if (string.IsNullOrWhiteSpace(toolName)) continue;
+
+                if (toolName == "none")
+                {
+                    // Extract answer from input
+                    if (call.TryGetProperty("input", out var input))
+                    {
+                        if (input.TryGetProperty("answer", out var ans))
+                            return ans.GetString() ?? "";
+                        return input.GetRawText();
+                    }
+                    return "";
+                }
+
+                // Get the input as a string
+                string inputStr;
+                if (call.TryGetProperty("input", out var inputEl))
+                {
+                    inputStr = inputEl.ValueKind == JsonValueKind.String
+                        ? inputEl.GetString() ?? ""
+                        : inputEl.GetRawText();
+                }
+                else
+                {
+                    inputStr = "";
+                }
+
+                // Execute the tool
+                var result = await _toolRegistry.ExecuteAsync(toolName, inputStr);
+                if (result == null)
+                    return $"Unknown tool: {toolName}";
+
+                if (!result.Success)
+                    return $"Tool '{toolName}' failed: {result.Error}";
+
+                _logger.Info("AgentLoop", $"Executed tool '{toolName}': {result.Output?[..Math.Min(result.Output?.Length ?? 0, 200)]}", request.AgentId);
+                return result.Output ?? "done";
+            }
+
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            _logger.Warn("AgentLoop", $"Tool execution parse error: {ex.Message}", request.AgentId);
+            return null;
         }
     }
 }

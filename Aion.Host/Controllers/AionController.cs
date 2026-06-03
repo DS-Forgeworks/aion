@@ -633,6 +633,14 @@ static class ReplyHelper
         if (string.IsNullOrWhiteSpace(text)) return text;
         text = text.Trim();
 
+        // 0. If text contains real conversational content, prefer it
+        // Tool execution results are plain text, not JSON — pass them through
+        if (!text.StartsWith("[") && !text.StartsWith("{") && !text.StartsWith("<think>") && !text.StartsWith("```"))
+        {
+            // This is probably a real answer, not raw JSON
+            return text;
+        }
+
         // 0. Extract from tool response array: [{"tool":"none","input":{"answer":"..."}}]
         var toolMatch = System.Text.RegularExpressions.Regex.Match(
             text, @"\""answer\""\s*:\s*\""(.+?)(?<!\\)\""",

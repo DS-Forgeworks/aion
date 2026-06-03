@@ -8,18 +8,23 @@ public class JsonRepairPipeline : IJsonRepairer
     public ParseResult Repair(string rawOutput, bool forceHeavy = false)
     {
         int stepsUsed = 0;
-        var text = rawOutput;
+        var text = rawOutput.Trim();
 
         // Step 1: Strip markdown fences
         text = Regex.Replace(text, @"^```(?:json)?\s*\n?", "", RegexOptions.Multiline);
         text = Regex.Replace(text, @"\n```\s*$", "", RegexOptions.Multiline);
         stepsUsed++;
 
-        // Step 2: Extract first JSON array or object
-        var arrayMatch = Regex.Match(text, @"(\[[\s\S]*?\]|\{[\s\S]*?\})");
+        // Step 2: Extract first JSON array (prefer), or object (wrap in array)
+        var arrayMatch = Regex.Match(text, @"(\[[\s\S]*?\])");
+        if (!arrayMatch.Success)
+            arrayMatch = Regex.Match(text, @"(\{[\s\S]*?\})");
         if (arrayMatch.Success)
         {
-            text = arrayMatch.Groups[1].Value;
+            text = arrayMatch.Groups[1].Value.Trim();
+            // If we got an object instead of an array, wrap it
+            if (text.StartsWith("{") && !text.StartsWith("["))
+                text = $"[{text}]";
         }
         stepsUsed++;
 
@@ -32,7 +37,8 @@ public class JsonRepairPipeline : IJsonRepairer
         catch { }
 
         // Step 4: Replace single quotes with double quotes
-        text = Regex.Replace(text, @"'(.*?)'", "\"$1\"");
+        text = Regex.Replace(text, @"'(?<key>[^']*?)':", "\"${key}\":");
+        text = Regex.Replace(text, @":\s*'(?<val>[^']*?)'", ":\"${val}\"");
         stepsUsed++;
         try { System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(text); return new ParseResult(true, text, null, stepsUsed, false); } catch { }
 
