@@ -101,6 +101,52 @@ public class AionController : ControllerBase
         return Ok(new { ok = true, message = "Soul updated. New identity takes effect immediately." });
     }
 
+    // PUT /api/config — update and save config
+    [HttpPut("config")]
+    public async Task<IActionResult> UpdateConfig([FromBody] System.Text.Json.JsonElement body)
+    {
+        try
+        {
+            var configDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aion");
+            var configManager = new Aion.Core.Configuration.ConfigManager(
+                Path.Combine(configDir, "aion-config.json"));
+
+            var cfg = configManager.Load();
+
+            if (body.TryGetProperty("llm", out var llm))
+            {
+                if (llm.TryGetProperty("provider", out var p)) cfg.Llm.Provider = p.GetString() ?? cfg.Llm.Provider;
+                if (llm.TryGetProperty("model", out var m)) cfg.Llm.Model = m.GetString() ?? cfg.Llm.Model;
+                if (llm.TryGetProperty("endpoint", out var e)) cfg.Llm.Endpoint = e.GetString();
+                if (llm.TryGetProperty("apiKey", out var k)) cfg.Llm.ApiKey = k.GetString();
+
+                _config.Llm.Provider = cfg.Llm.Provider;
+                _config.Llm.Model = cfg.Llm.Model;
+                _config.Llm.Endpoint = cfg.Llm.Endpoint;
+                _config.Llm.ApiKey = cfg.Llm.ApiKey;
+            }
+
+            if (body.TryGetProperty("safety", out var safety))
+            {
+                if (safety.TryGetProperty("safeMode", out var sm)) cfg.Safety.SafeMode = sm.GetBoolean();
+                if (safety.TryGetProperty("shellEnabled", out var se)) cfg.Safety.ShellEnabled = se.GetBoolean();
+
+                _config.Safety.SafeMode = cfg.Safety.SafeMode;
+                _config.Safety.ShellEnabled = cfg.Safety.ShellEnabled;
+            }
+
+            configManager.Save(cfg);
+            _logger.Info("Config", "Configuration saved via settings page");
+            return Ok(new { ok = true, message = "Configuration saved and applied." });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Config", $"Save failed: {ex.Message}");
+            return StatusCode(500, new { ok = false, error = ex.Message });
+        }
+    }
+
     // GET /api/version
     [HttpGet("version")]
     public IActionResult Version() => Ok(new { version = "1.0.0", build_date = DateTime.UtcNow.ToString("O") });

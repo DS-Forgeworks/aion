@@ -7,6 +7,7 @@ public class AuthMiddleware
     private readonly RequestDelegate _next;
     private static readonly string[] PublicPaths = {
         "/api/health",
+        "/api/config",
         "/api/login",
         "/api/auto-login",
         "/api/setup",
