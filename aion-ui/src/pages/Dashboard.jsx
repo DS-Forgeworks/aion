@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../contexts/WebSocketProvider';
+import { useAuth } from '../contexts/AuthProvider';
+import { authedFetch } from '../lib/authFetch';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { state: ws, send } = useWebSocket();
+  const { token, isAuthenticated, logout, firstRun } = useAuth();
   const [health, setHealth] = useState(null);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
@@ -20,6 +23,12 @@ export default function Dashboard() {
   const [sending, setSending] = useState(false);
   const [editingMsgId, setEditingMsgId] = useState(null);
   const [editText, setEditText] = useState('');
+
+  // Redirect to login if not authenticated
+  if (!token) {
+    navigate('/login');
+    return null;
+  }
 
   useEffect(() => {
     const fetchHealth = async () => {
@@ -40,7 +49,7 @@ export default function Dashboard() {
 
   const fetchModels = async () => {
     try {
-      const res = await fetch('/api/models');
+      const res = await authedFetch('/api/models');
       if (res.ok) {
         const data = await res.json();
         setModels(Array.isArray(data) ? data : []);
@@ -50,7 +59,7 @@ export default function Dashboard() {
 
   const fetchConversations = async () => {
     try {
-      const res = await fetch('/api/conversations');
+      const res = await authedFetch('/api/conversations');
       if (res.ok) {
         const data = await res.json();
         if (data.conversations) setConversations(data.conversations);
@@ -83,7 +92,7 @@ export default function Dashboard() {
 
   const loadConversation = async (convId) => {
     try {
-      const res = await fetch(`/api/conversations/${convId}/messages`);
+      const res = await authedFetch(`/api/conversations/${convId}/messages`);
       if (res.ok) {
         const data = await res.json();
         if (data.messages) {
@@ -109,7 +118,7 @@ export default function Dashboard() {
     setInput('');
 
     try {
-      const res = await fetch(`/api/agents/default/message`, {
+      const res = await authedFetch(`/api/agents/default/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,10 +146,58 @@ export default function Dashboard() {
     }
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('uploadedFile', file);
+
+    setSending(true);
+    setMessages(prev => [...prev, { type: 'outgoing', body: { text: `📎 Uploading ${file.name}...` } }]);
+
+    try {
+      const res = await authedFetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setMessages(prev => prev.map((m, i) =>
+          i === prev.length - 1
+            ? { type: 'outgoing', body: { text: `📎 Uploaded: ${data.name} (${Math.round(data.size / 1024)}KB)` } }
+            : m
+        ));
+        // Send the file preview to the agent
+        const response = await authedFetch('/api/agents/default/message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: `I've uploaded a file "${data.name}". Here's its content:\n\n${data.preview || 'Binary file uploaded.'}\n\nAnalyze this.`,
+            mode: 'chat',
+            model: selectedModel || undefined,
+            conversation_id: currentConvId || undefined
+          })
+        });
+        const reply = await response.json();
+        if (reply.reply) {
+          setMessages(prev => [...prev, { type: 'incoming', body: { text: reply.reply }, model: selectedModel }]);
+        }
+      } else {
+        setMessages(prev => [...prev, { type: 'incoming', body: { text: `Upload failed: ${data.error}` } }]);
+      }
+    } catch (err) {
+      setMessages(prev => [...prev, { type: 'incoming', body: { text: `Upload error: ${err.message}` } }]);
+    } finally {
+      setSending(false);
+      e.target.value = '';
+    }
+  };
+
   const handleEdit = async (msgId, newContent) => {
     if (!newContent.trim()) return;
     try {
-      await fetch(`/api/messages/${msgId}`, {
+      await authedFetch(`/api/messages/${msgId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newContent })
@@ -174,7 +231,7 @@ export default function Dashboard() {
   const deleteConversation = async (convId, e) => {
     e.stopPropagation();
     try {
-      await fetch(`/api/conversations/${convId}`, { method: 'DELETE' });
+      await authedFetch(`/api/conversations/${convId}`, { method: 'DELETE' });
       if (currentConvId === convId) {
         setMessages([]);
         setCurrentConvId(null);
@@ -230,6 +287,9 @@ export default function Dashboard() {
             </>
           )}
         </div>
+        <button className="btn-logout" onClick={logout} title="Sign Out">
+          Sign Out
+        </button>
       </header>
 
       <div className="dashboard-grid">
@@ -352,6 +412,15 @@ export default function Dashboard() {
           </div>
 
           <div className="input-row">
+            <label className="upload-btn" title="Upload a file">
+              <input
+                type="file"
+                onChange={handleFileUpload}
+                disabled={sending}
+                style={{ display: 'none' }}
+              />
+              📎
+            </label>
             <input
               type="text"
               value={input}

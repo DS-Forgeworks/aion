@@ -1,68 +1,92 @@
-import { createContext, useContext, useReducer, useEffect } from 'react';
+import { createContext, useContext, useReducer, useEffect, useCallback, useState } from 'react';
 
 const AuthContext = createContext(null);
 
-const storedUser = (() => {
-  try {
-    const u = localStorage.getItem('aion_user');
-    return u ? JSON.parse(u) : null;
-  } catch { return null; }
+const storedToken = (() => {
+  try { return localStorage.getItem('aion_token'); } catch { return null; }
 })();
 
 const initialState = {
-  user: storedUser,
-  token: localStorage.getItem('aion_token'),
-  loading: false,
+  user: null,
+  token: storedToken,
+  loading: !storedToken,  // if no token, not loading
   error: null,
+  isAuthenticated: false,
 };
 
 function authReducer(state, action) {
   switch (action.type) {
-    case 'LOGIN_START': return { ...state, loading: true, error: null };
-    case 'LOGIN_OK': return { ...state, loading: false, user: action.user, token: action.token, error: null };
-    case 'LOGIN_FAIL': return { ...state, loading: false, error: action.error, user: null, token: null };
-    case 'LOGOUT': return { ...state, user: null, token: null, error: null };
+    case 'SET_AUTH': return { ...state, user: action.user, token: action.token, loading: false, isAuthenticated: true, error: null };
+    case 'LOGOUT': return { ...state, user: null, token: null, loading: false, isAuthenticated: false, error: null };
     case 'LOADING': return { ...state, loading: true };
-    case 'SET_AUTH': return { ...state, user: action.user, token: action.token, loading: false };
-    case 'SET_SESSION': return { ...state, token: action.token };
+    case 'ERROR': return { ...state, error: action.error, loading: false };
     default: return state;
   }
 }
 
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
+  const [firstRun, setFirstRun] = useState(false);
 
+  // Check server health and auth status on mount
   useEffect(() => {
-    if (state.user) {
-      localStorage.setItem('aion_user', JSON.stringify(state.user));
-    } else {
-      localStorage.removeItem('aion_user');
-    }
+    const init = async () => {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        setFirstRun(data.first_run);
+      } catch {}
+    };
+    init();
+  }, []);
+
+  // Auto-login if token stored
+  useEffect(() => {
     if (state.token) {
       localStorage.setItem('aion_token', state.token);
-    } else {
-      localStorage.removeItem('aion_token');
+      document.cookie = `aion_token=${state.token}; path=/; max-age=2592000; SameSite=Strict`;
+      dispatch({ type: 'SET_AUTH', user: { email: 'admin' }, token: state.token });
     }
-  }, [state.user, state.token]);
+  }, []);
 
-  const login = async (provider) => {
-    dispatch({ type: 'LOGIN_START' });
+  const login = async (username, password) => {
+    dispatch({ type: 'LOADING' });
     try {
-      const res = await fetch(`/api/auth/${provider}`, { method: 'POST' });
-      if (!res.ok) throw new Error(`Login failed: ${res.status}`);
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
       const data = await res.json();
-      dispatch({ type: 'LOGIN_OK', user: data.user, token: data.token });
+      if (!data.ok) {
+        dispatch({ type: 'ERROR', error: data.error || 'Login failed' });
+        return false;
+      }
+      localStorage.setItem('aion_token', data.token);
+      document.cookie = `aion_token=${data.token}; path=/; max-age=2592000; SameSite=Strict`;
+      dispatch({ type: 'SET_AUTH', user: { email: username }, token: data.token });
+      return true;
     } catch (err) {
-      dispatch({ type: 'LOGIN_FAIL', error: err.message });
+      dispatch({ type: 'ERROR', error: 'Connection failed' });
+      return false;
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      fetch('/api/logout', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${state.token}` }
+      });
+    } catch {}
+    localStorage.removeItem('aion_token');
+    document.cookie = 'aion_token=; path=/; max-age=0';
     dispatch({ type: 'LOGOUT' });
+    window.location.href = '/login';
   };
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, dispatch }}>
+    <AuthContext.Provider value={{ ...state, login, logout, firstRun, dispatch }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthProvider';
+import { authedFetch } from '../lib/authFetch';
 
 export default function Settings() {
+  const navigate = useNavigate();
+  const { token, logout } = useAuth();
   const [config, setConfig] = useState(null);
   const [models, setModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -9,10 +14,21 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
 
+  // Password change
+  const [oldPw, setOldPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [pwMsg, setPwMsg] = useState(null);
+  const [changingPw, setChangingPw] = useState(false);
+
+  if (!token) {
+    navigate('/login');
+    return null;
+  }
+
   const fetchModels = async () => {
     setModelsLoading(true);
     try {
-      const res = await fetch('/api/models');
+      const res = await authedFetch('/api/models');
       if (res.ok) {
         const data = await res.json();
         setModels(Array.isArray(data) ? data : data.models || []);
@@ -41,7 +57,7 @@ export default function Settings() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      const res = await fetch('/api/config', {
+      const res = await authedFetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
@@ -52,6 +68,31 @@ export default function Settings() {
       setSaveMsg({ type: 'error', text: err.message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!oldPw || !newPw) { setPwMsg('Fill in both fields'); return; }
+    if (newPw.length < 4) { setPwMsg('Password must be at least 4 characters'); return; }
+    setChangingPw(true);
+    setPwMsg(null);
+    try {
+      const res = await authedFetch('/api/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setPwMsg({ type: 'success', text: 'Password changed!' });
+        setOldPw(''); setNewPw('');
+      } else {
+        setPwMsg({ type: 'error', text: data.error || 'Failed' });
+      }
+    } catch (err) {
+      setPwMsg({ type: 'error', text: err.message });
+    } finally {
+      setChangingPw(false);
     }
   };
 
@@ -86,9 +127,14 @@ export default function Settings() {
     <div className="page settings-page">
       <header className="page-header">
         <h1>Settings</h1>
-        <button className="btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Save'}
-        </button>
+        <div className="page-actions">
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+          <button className="btn-secondary danger" onClick={logout}>
+            Sign Out
+          </button>
+        </div>
       </header>
 
       {saveMsg && (
@@ -96,6 +142,42 @@ export default function Settings() {
           {saveMsg.text}
         </div>
       )}
+
+      <section className="settings-section">
+        <h2>Account</h2>
+        <div className="settings-grid">
+          <div className="setting">
+            <label>Current Password</label>
+            <input
+              type="password"
+              value={oldPw}
+              onChange={(e) => setOldPw(e.target.value)}
+              placeholder="Current password"
+            />
+          </div>
+          <div className="setting">
+            <label>New Password</label>
+            <input
+              type="password"
+              value={newPw}
+              onChange={(e) => setNewPw(e.target.value)}
+              placeholder="New password"
+            />
+          </div>
+          <div className="setting setting-action">
+            <button
+              className="btn-secondary"
+              onClick={handleChangePassword}
+              disabled={changingPw}
+            >
+              {changingPw ? 'Changing...' : 'Change Password'}
+            </button>
+            {pwMsg && (
+              <span className={`msg-inline ${pwMsg.type}`}>{pwMsg.text}</span>
+            )}
+          </div>
+        </div>
+      </section>
 
       <section className="settings-section">
         <h2>LLM Configuration</h2>

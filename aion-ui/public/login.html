@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AION — Login</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #0b0c12;
+      color: #e8e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-font-smoothing: antialiased;
+    }
+    .login-container {
+      width: 100%;
+      max-width: 380px;
+      padding: 2rem;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .logo svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 0.75rem;
+    }
+    .logo h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .logo .accent { color: #6c63ff; }
+    .logo p {
+      color: #5a5a70;
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+    .card {
+      background: #12131c;
+      border: 1px solid #2a2d45;
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+    .card h2 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #8a8aa0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.25rem;
+      text-align: center;
+    }
+    .field {
+      margin-bottom: 1rem;
+    }
+    .field label {
+      display: block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #5a5a70;
+      margin-bottom: 0.3rem;
+    }
+    .field input {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      background: #1a1b28;
+      border: 1px solid #2a2d45;
+      border-radius: 6px;
+      color: #e8e8f0;
+      font-size: 0.9rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+    .field input:focus {
+      outline: none;
+      border-color: #6c63ff;
+    }
+    .field input::placeholder {
+      color: #3a3a50;
+    }
+    .error {
+      background: rgba(239,83,80,0.08);
+      border: 1px solid rgba(239,83,80,0.3);
+      color: #ef5350;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    .error.show { display: block; }
+    button {
+      width: 100%;
+      padding: 0.65rem;
+      background: #6c63ff;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-size: 0.9rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #7b73ff; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .hint {
+      text-align: center;
+      margin-top: 1rem;
+      font-size: 0.75rem;
+      color: #5a5a70;
+    }
+    .hint code {
+      color: #6c63ff;
+      background: rgba(108,99,255,0.1);
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      font-size: 0.7rem;
+    }
+    .first-run {
+      text-align: center;
+      padding: 0.75rem;
+      background: rgba(108,99,255,0.08);
+      border: 1px solid rgba(108,99,255,0.2);
+      border-radius: 6px;
+      margin-bottom: 1.25rem;
+      font-size: 0.8rem;
+      display: none;
+    }
+    .first-run.show { display: block; }
+    .first-run .icon { font-size: 1.5rem; margin-bottom: 0.35rem; }
+    .first-run p { color: #8a8aa0; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="logo">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#6c63ff"/>
+            <stop offset="100%" stop-color="#8b7aff"/>
+          </linearGradient>
+        </defs>
+        <polygon points="16,2 28,12 16,16 4,12" fill="url(#lg)" opacity="0.9"/>
+        <polygon points="4,12 16,16 16,30 4,20" fill="url(#lg)" opacity="0.6"/>
+        <polygon points="28,12 16,16 16,30 28,20" fill="url(#lg)" opacity="0.35"/>
+        <circle cx="16" cy="16" r="2" fill="white" opacity="0.85"/>
+      </svg>
+      <h1>A<span class="accent">ION</span></h1>
+      <p>Agent Swarm OS</p>
+    </div>
+
+    <div class="card">
+      <div class="first-run" id="firstRun">
+        <div class="icon">🚀</div>
+        <p>Welcome! Default login:<br/>
+        <strong>Username:</strong> <code>admin</code><br/>
+        <strong>Password:</strong> <code>aion</code></p>
+      </div>
+
+      <h2>Sign In</h2>
+      <div class="error" id="error"></div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="username" placeholder="admin" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Enter password" autocomplete="current-password" />
+      </div>
+      <button id="loginBtn" onclick="login()">Sign In</button>
+    </div>
+
+    <div class="hint">
+      Default: <code>admin</code> / <code>aion</code><br/>
+      Change in Settings after login
+    </div>
+  </div>
+
+  <script>
+    // Check if this is first run (no users configured with changed password)
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(data => {
+        if (data.first_run) {
+          document.getElementById('firstRun').classList.add('show');
+        }
+      })
+      .catch(() => {});
+
+    async function login() {
+      const username = document.getElementById('username').value.trim() || 'admin';
+      const password = document.getElementById('password').value.trim() || 'aion';
+      const btn = document.getElementById('loginBtn');
+      const error = document.getElementById('error');
+
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+      error.classList.remove('show');
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+
+        if (data.ok && data.token) {
+          // Store token
+          localStorage.setItem('aion_token', data.token);
+          document.cookie = `aion_token=${data.token}; path=/; max-age=2592000; SameSite=Strict`;
+          // Redirect to dashboard
+          window.location.href = '/dashboard';
+        } else {
+          error.textContent = data.error || 'Login failed';
+          error.classList.add('show');
+        }
+      } catch (err) {
+        error.textContent = 'Connection failed. Is the server running?';
+        error.classList.add('show');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    }
+
+    // Enter key submits
+    document.getElementById('password').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') login();
+    });
+    document.getElementById('username').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('password').focus();
+    });
+  </script>
+</body>
+</html>

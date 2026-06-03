@@ -1,4 +1,5 @@
 using Aion.Core;
+using Aion.Core.Auth;
 using Aion.Core.Configuration;
 using Aion.Core.Interfaces;
 using Aion.Core.Memory;
@@ -23,13 +24,15 @@ public class AionController : ControllerBase
     private readonly ISafetyGate _safety;
     private readonly AppConfig _config;
     private readonly IConversationStore _convStore;
+    private readonly AuthService _auth;
 
     public AionController(
         AgentLoop agentLoop, ToolRegistry toolRegistry,
         IMemoryStore memory, IPlanStore planStore,
         IAionLogger logger, IRateLimiter rateLimiter,
         ISafetyGate safety, AppConfig config,
-        IConversationStore convStore)
+        IConversationStore convStore,
+        AuthService auth)
     {
         _agentLoop = agentLoop;
         _toolRegistry = toolRegistry;
@@ -40,19 +43,25 @@ public class AionController : ControllerBase
         _safety = safety;
         _config = config;
         _convStore = convStore;
+        _auth = auth;
     }
 
     // GET /api/health
     [HttpGet("health")]
-    public IActionResult Health()
+    public async Task<IActionResult> Health()
     {
+        var isFirstRun = await _auth.IsFirstRunAsync();
+
         return Ok(new
         {
             version = "1.0.0",
+            name = "AION",
+            status = "ok",
             uptime = Environment.TickCount64 / 1000,
             agents = 0,
             llm_status = _config.Llm.Provider,
-            errors_1h = 0
+            errors_1h = 0,
+            first_run = isFirstRun
         });
     }
 
@@ -378,9 +387,102 @@ public class AionController : ControllerBase
             return StatusCode(500, new { ok = false, error = ex.Message });
         }
     }
+    [HttpPost("login")]
+    public async Task<IActionResult> Login([FromBody] LoginRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Username) || string.IsNullOrWhiteSpace(req?.Password))
+            return BadRequest(new { ok = false, error = "Username and password required" });
+
+        var (success, token, error) = await _auth.LoginAsync(req.Username, req.Password);
+        if (!success || token == null)
+            return Unauthorized(new { ok = false, error = error ?? "Login failed" });
+
+        return Ok(new { ok = true, token });
+    }
+
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        var authHeader = Request.Headers["Authorization"].FirstOrDefault();
+        var token = authHeader?.Replace("Bearer ", "");
+        if (token != null)
+            await _auth.LogoutAsync(token);
+        return Ok(new { ok = true });
+    }
+
+    [HttpPost("upload")]
+    public async Task<IActionResult> UploadFile(IFormFile uploadedFile)
+    {
+        if (uploadedFile == null || uploadedFile.Length == 0)
+            return BadRequest(new { ok = false, error = "No file provided" });
+
+        var uploadDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".aion", "uploads");
+        Directory.CreateDirectory(uploadDir);
+
+        var fileName = $"{Guid.NewGuid()}_{uploadedFile.FileName}";
+        var filePath = Path.Combine(uploadDir, fileName);
+
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await uploadedFile.CopyToAsync(stream);
+        }
+
+        // Read first 10KB for preview
+        string preview;
+        try
+        {
+            preview = await System.IO.File.ReadAllTextAsync(filePath);
+            if (preview.Length > 10000)
+            {
+                preview = preview[..10000] + "\n... [truncated, full file saved]";
+            }
+        }
+        catch
+        {
+            preview = $"File saved ({uploadedFile.Length} bytes). Binary or non-UTF8 content.";
+        }
+
+        _logger.Info("Upload", $"File uploaded: {uploadedFile.FileName} ({uploadedFile.Length} bytes)", data: new { file = fileName, size = uploadedFile.Length });
+
+        return Ok(new { ok = true, file = fileName, name = uploadedFile.FileName, size = uploadedFile.Length, preview });
+    }
+
+    [HttpGet("settings")]
+    public async Task<IActionResult> GetSettings()
+    {
+        var apiKey = await _auth.GetApiKeyAsync();
+        return Ok(new { ok = true, settings = new { api_key = apiKey != null ? apiKey[..4] + "****" : null } });
+    }
+
+    [HttpPost("settings")]
+    public async Task<IActionResult> SetSettings([FromBody] Dictionary<string, string> settings)
+    {
+        if (settings.TryGetValue("api_key", out var apiKey) && !string.IsNullOrWhiteSpace(apiKey))
+            await _auth.SetApiKeyAsync(apiKey);
+        return Ok(new { ok = true });
+    }
+
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
+    {
+        var authHeader = Request.Headers["Authorization"].FirstOrDefault();
+        var token = authHeader?.Replace("Bearer ", "");
+        if (token == null)
+            return Unauthorized(new { ok = false, error = "Not authenticated" });
+
+        var result = await _auth.ChangePasswordAsync(token, req?.OldPassword ?? "", req?.NewPassword ?? "");
+        if (!result)
+            return BadRequest(new { ok = false, error = "Failed to change password. Check your current password." });
+
+        return Ok(new { ok = true, message = "Password changed successfully" });
+    }
 }
 
 public record CreateToolRequest(string? Name, string? Description, string? Code, string? Language);
+public record LoginRequest(string? Username, string? Password);
+public record ChangePasswordRequest(string? OldPassword, string? NewPassword);
 public record MessageRequest(string? Text, string? Mode, string? Model, string? ConversationId = null);
 public record TaskRequest(string? Text, string? Priority, string? Model = null);
 public record StoreMemoryRequest(string? Content, string? Tags);

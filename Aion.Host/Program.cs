@@ -1,8 +1,10 @@
 using Aion.Core;
+using Aion.Core.Auth;
 using Aion.Core.Configuration;
 using Aion.Core.Interfaces;
 using Aion.Core.Memory;
 using Aion.Core.Migrations;
+using Aion.Core.Middleware;
 using Aion.Core.Repair;
 using Aion.Core.Safety;
 using Aion.Core.Services;
@@ -32,6 +34,7 @@ var repairer = new JsonRepairPipeline();
 var scorer = new ConfidenceScorer();
 var safety = new CapabilityGate();
 var rateLimiter = new RateLimiter();
+var auth = new AuthService($"Data Source={dbPath}");
 
 // Configure rate limits
 rateLimiter.Configure("tool_calls", 10, 30000);
@@ -91,6 +94,7 @@ builder.Services.AddSingleton(rateLimiter as IRateLimiter);
 builder.Services.AddSingleton(memoryStore as IMemoryStore);
 builder.Services.AddSingleton(planStore as IPlanStore);
 builder.Services.AddSingleton(convStore as IConversationStore);
+builder.Services.AddSingleton(auth);
 builder.Services.AddSingleton(toolRegistry);
 builder.Services.AddSingleton(llmService);
 builder.Services.AddSingleton(promptBuilder);
@@ -102,6 +106,7 @@ builder.Services.AddSignalR();
 
 var app = builder.Build();
 app.UseCors();
+app.UseAionAuth();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapControllers();
