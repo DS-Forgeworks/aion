@@ -113,6 +113,9 @@ app.MapControllers();
 app.MapHub<MeshHub>("/hub/mesh");
 app.MapHub<DashboardHub>("/hub/dashboard");
 
+// SPA fallback: any unknown route serves index.html so React can handle it
+app.MapFallbackToFile("index.html");
+
 app.Urls.Add("http://0.0.0.0:6969");
 if (appConfig.Mesh.Enabled)
     app.Urls.Add($"http://0.0.0.0:{appConfig.Mesh.Port}");
