@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
 # ══════════════════════════════════════════════════════════
-# AION Bootstrap Installer
+# AION Bootstrap Installer v1.0.0
 # Zero prerequisites. Detects OS, installs everything needed,
 # builds from source, and delivers a running system.
 #
 # Usage:
-#   curl -fsSL https://aion.sh | bash
-#   bash setup.sh
-#   ./setup.sh
+#   git clone https://github.com/DS-Forgeworks/aion.git
+#   cd aion && bash setup.sh
 # ══════════════════════════════════════════════════════════
+set -euo pipefail
 
 AION_VERSION="1.0.0"
 MIN_DOTNET="9.0"
@@ -25,7 +23,21 @@ warn()  { echo -e "${YELLOW}  ⚠${NC} $1"; }
 fail()  { echo -e "${RED}  ✗ ${NC}$1"; exit 1; }
 header(){ echo -e "\n${BOLD}$1${NC}\n$(printf '%*s' ${#1} | tr ' ' '─')"; }
 
+# Normalise SRC_DIR — works with `bash setup.sh` from the project root
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || echo "$PWD")"
+
+# ── Checks if we're running interactively (has a real terminal) ──
+INTERACTIVE=false
+[ -t 0 ] && INTERACTIVE=true
+
+# ── Helper: safe sudo (non-interactive, gracefully handles missing sudo) ──
+safe_sudo() {
+  if command -v sudo &>/dev/null; then
+    sudo -n "$@" 2>/dev/null || warn "sudo $* failed (non-interactive) — continuing anyway"
+  else
+    warn "sudo not available — skipping: $*"
+  fi
+}
 
 # ──────────────────────────────────────────────────────────
 # Phase 0: Detect platform
@@ -45,10 +57,7 @@ detect_platform() {
     linux)   OS="linux"; PKG_EXT="tar.gz"; RID="linux-$ARCH" ;;
     darwin)  OS="macos"; PKG_EXT="tar.gz"; RID="osx-$ARCH" ;;
     mingw*|msys*|cygwin*)
-      OS="win"
-      PKG_EXT="zip"
-      RID="win-$ARCH"
-      # Normalize Windows paths
+      OS="win"; PKG_EXT="zip"; RID="win-$ARCH"
       SRC_DIR="$(pwd -W 2>/dev/null || echo "$SRC_DIR")"
       ;;
     *) fail "Unsupported OS: $RAW_OS. Need Linux, macOS, or Windows (MSYS/Git Bash)." ;;
@@ -58,166 +67,92 @@ detect_platform() {
 }
 
 # ──────────────────────────────────────────────────────────
-# Phase 0b: Optional Ollama install
+# Phase 0b: Setup directory check
 # ──────────────────────────────────────────────────────────
-install_ollama_if_asked() {
-  if command -v ollama &>/dev/null; then
-    ok "Ollama already installed ($(ollama --version 2>/dev/null || echo 'unknown version'))"
-    return 0
+check_source() {
+  if [ ! -f "$SRC_DIR/Aion.Host/Aion.Host.csproj" ]; then
+    fail "Cannot find AION source in $SRC_DIR.
+  Run this script from the project root (where Aion.Host/ and aion-ui/ live).
+  If you haven't cloned it yet:
+    git clone https://github.com/DS-Forgeworks/aion.git
+    cd aion && bash setup.sh"
   fi
-
-  # Only prompt if running interactively
-  if [ -t 0 ]; then
-    echo ""
-    info "Ollama not found. Ollama runs local LLMs (required unless using cloud API)."
-    read -r -p "  Install Ollama now? [Y/n]: " REPLY < /dev/tty
-    case "$REPLY" in
-      [nN]*|[nN][oO])
-        warn "Skipping Ollama. You can install later or use /api/setup to configure a cloud provider."
-        return 0
-        ;;
-    esac
-  fi
-
-  info "Installing Ollama..."
-  case "$OS" in
-    linux)
-      if command -v apt &>/dev/null; then
-        curl -fsSL https://ollama.com/install.sh | sh 2>&1 || true
-      elif command -v dnf &>/dev/null; then
-        curl -fsSL https://ollama.com/install.sh | sh 2>&1 || true
-      elif command -v apk &>/dev/null; then
-        curl -fsSL https://ollama.com/install.sh | sh 2>&1 || true
-      else
-        curl -fsSL https://ollama.com/install.sh | sh 2>&1 || true
-      fi
-      ;;
-    macos)
-      if command -v brew &>/dev/null; then
-        brew install ollama 2>&1 | tail -3 || true
-      else
-        curl -fsSL https://ollama.com/install.sh | sh 2>&1 || true
-      fi
-      ;;
-    win)
-      warn "Windows: download ollama from https://ollama.com/download and install manually"
-      info "After install, restart this script and it will detect ollama automatically"
-      return 0
-      ;;
-  esac
-
-  if command -v ollama &>/dev/null; then
-    ok "Ollama installed"
-    info "Pulling qwen3.5:4b (2.1GB)..."
-    ollama pull qwen3.5:4b 2>&1 | tail -3
-    ok "Model qwen3.5:4b ready"
-  else
-    warn "Ollama install completed but binary not found — you may need to restart your terminal"
-  fi
+  ok "Source found: $SRC_DIR"
 }
 
 # ──────────────────────────────────────────────────────────
 # Phase 1: Install system prerequisites
 # ──────────────────────────────────────────────────────────
 install_curl() {
-  if command -v curl &>/dev/null; then ok "curl found"; return 0; fi
-
-  info "curl not found — installing..."
+  command -v curl &>/dev/null && { ok "curl found"; return 0; }
+  info "Installing curl..."
   case "$OS" in
     linux)
-      if command -v apt &>/dev/null; then sudo apt install -y curl >/dev/null 2>&1
-      elif command -v dnf &>/dev/null; then sudo dnf install -y curl >/dev/null 2>&1
-      elif command -v apk &>/dev/null; then apk add curl >/dev/null 2>&1
-      else fail "Please install curl: sudo apt install curl"
-      fi ;;
-    macos)
-      if command -v brew &>/dev/null; then brew install curl >/dev/null 2>&1
-      else fail "Please install curl: xcode-select --install"
-      fi ;;
-    win)
-      # On Windows MSYS/Git Bash, curl usually ships with Git
-      fail "curl not found. Install Git for Windows (includes curl) from https://git-scm.com"
+      command -v apt &>/dev/null && safe_sudo apt install -y curl
+      command -v dnf &>/dev/null && safe_sudo dnf install -y curl
+      command -v apk &>/dev/null && apk add curl
       ;;
+    macos) command -v brew &>/dev/null && brew install curl ;;
+    win) fail "curl not found. Install Git for Windows (includes curl) from https://git-scm.com" ;;
   esac
+  command -v curl &>/dev/null || fail "curl still missing after install attempt."
   ok "curl installed"
 }
 
 install_extractor() {
-  case "$OS" in
-    win)
-      if command -v unzip &>/dev/null; then ok "unzip found"; return 0; fi
-      info "unzip not found — installing..."
-      if command -v apt &>/dev/null; then
-        pacman -S unzip --noconfirm >/dev/null 2>&1 && ok "unzip installed" && return 0
-      fi
-      fail "unzip is required. Install Git for Windows (includes unzip) or run: pacman -S unzip"
-      ;;
-    *)
-      if command -v tar &>/dev/null; then ok "tar found"; return 0; fi
-      info "tar not found — installing..."
-      if command -v apt &>/dev/null; then sudo apt install -y tar >/dev/null 2>&1
-      elif command -v dnf &>/dev/null; then sudo dnf install -y tar >/dev/null 2>&1
-      else fail "Please install tar: sudo apt install tar"
-      fi
-      ok "tar installed"
-      ;;
-  esac
+  if [ "$OS" = "win" ]; then
+    command -v unzip &>/dev/null && { ok "unzip found"; return 0; }
+    info "Installing unzip..."
+    command -v pacman &>/dev/null && pacman -S unzip --noconfirm
+    command -v unzip &>/dev/null || fail "unzip required. Run: pacman -S unzip"
+    ok "unzip installed"
+  else
+    command -v tar &>/dev/null && { ok "tar found"; return 0; }
+    info "Installing tar..."
+    command -v apt &>/dev/null && safe_sudo apt install -y tar
+    command -v dnf &>/dev/null && safe_sudo dnf install -y tar
+    command -v tar &>/dev/null || fail "tar still missing. Install: sudo apt install tar"
+    ok "tar installed"
+  fi
 }
 
 install_node() {
   if command -v node &>/dev/null; then
-    local nv
-    nv="$(node --version 2>/dev/null | sed 's/v//' | cut -d. -f1)"
+    local nv; nv="$(node --version 2>/dev/null | sed 's/v//' | cut -d. -f1)"
     if [ "$nv" -ge 18 ] 2>/dev/null; then
       ok "Node.js $(node --version) found"
       return 0
     fi
     warn "Node.js $(node --version) is old (need 18+)"
-  else
-    warn "Node.js not found"
   fi
 
-  info "Installing Node.js $MIN_NODE+..."
+  info "Installing Node.js 20..."
+
+  local NODE_DIR="$HOME/.node"
+  rm -rf "$NODE_DIR" 2>/dev/null || true
+  mkdir -p "$NODE_DIR"
+
   case "$OS" in
     win)
-      # Windows: download .zip and extract
-      local NODE_DIR="$HOME/.node"
       local NODE_ZIP="/tmp/node.zip"
-      rm -rf "$NODE_DIR" 2>/dev/null || true
-      mkdir -p "$NODE_DIR"
-
       curl -fsSL "https://nodejs.org/dist/v20.18.0/node-v20.18.0-win-x64.zip" -o "$NODE_ZIP" \
-        || fail "Failed to download Node.js for Windows"
+        || fail "Failed to download Node.js"
       unzip -q "$NODE_ZIP" -d "$NODE_DIR" >/dev/null 2>&1 || fail "Failed to extract Node.js"
       mv "$NODE_DIR/node-v20.18.0-win-x64/"* "$NODE_DIR/"
       rm -rf "$NODE_DIR/node-v20.18.0-win-x64/" "$NODE_ZIP"
       export PATH="$NODE_DIR:$PATH"
       ;;
-    macos|linux)
-      # install via nvm
-      export NVM_DIR="$HOME/.nvm"
-      if [ ! -d "$NVM_DIR" ]; then
-        curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash >/dev/null 2>&1 || {
-          # Fallback: direct download
-          local NODE_DIR="$HOME/.node"
-          local NODE_TAR="/tmp/node.tar.xz"
-          mkdir -p "$NODE_DIR"
-          curl -fsSL "https://nodejs.org/dist/v20.18.0/node-v20.18.0-${RID/win/linux}.tar.xz" -o "$NODE_TAR" \
-            || fail "Failed to download Node.js"
-          tar -xf "$NODE_TAR" -C "$NODE_DIR" --strip-components=1 >/dev/null 2>&1 || fail "Failed to extract"
-          rm -f "$NODE_TAR"
-          export PATH="$NODE_DIR/bin:$PATH"
-          ok "Node.js $(node --version) installed (standalone)"
-          return 0
-        }
-      fi
-      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-      nvm install "$MIN_NODE" >/dev/null 2>&1 || nvm install 18 >/dev/null 2>&1
-      nvm use default >/dev/null 2>&1 || true
+    *)
+      local NODE_TAR="/tmp/node.tar.xz"
+      curl -fsSL "https://nodejs.org/dist/v20.18.0/node-v20.18.0-${RID/win/linux}.tar.xz" -o "$NODE_TAR" \
+        || fail "Failed to download Node.js"
+      tar -xf "$NODE_TAR" -C "$NODE_DIR" --strip-components=1 >/dev/null 2>&1 || fail "Failed to extract"
+      rm -f "$NODE_TAR"
+      export PATH="$NODE_DIR/bin:$PATH"
       ;;
   esac
 
-  ok "Node.js $(node --version) installed"
+  ok "Node.js $(node --version) installed (standalone at $NODE_DIR)"
 }
 
 # ──────────────────────────────────────────────────────────
@@ -227,14 +162,11 @@ install_dotnet() {
   header ".NET SDK"
 
   if command -v dotnet &>/dev/null; then
-    local ver
-    ver="$(dotnet --version 2>/dev/null | cut -d. -f1-2)"
+    local ver; ver="$(dotnet --version 2>/dev/null | cut -d. -f1-2)"
     if printf '%s\n' "$ver" "$MIN_DOTNET" | sort -V | head -1 | grep -q "^$MIN_DOTNET"; then
       ok ".NET SDK $ver found"; return 0
     fi
     warn ".NET SDK $ver found, $MIN_DOTNET+ required"
-  else
-    warn ".NET SDK not found"
   fi
 
   local DOTNET_DIR="$HOME/.dotnet"
@@ -242,31 +174,30 @@ install_dotnet() {
 
   info "Downloading .NET SDK installer..."
   curl -fsSL "https://dot.net/v1/dotnet-install.sh" -o "$INSTALL_SCRIPT" || {
-    # On Windows, PowerShell installer as fallback
     if [ "$OS" = "win" ] && command -v powershell &>/dev/null; then
-      info "Trying PowerShell installer..."
       powershell -Command "
         Invoke-WebRequest -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile '$INSTALL_SCRIPT.ps1'
-      " >/dev/null 2>&1 || fail "Failed to download .NET installer"
+      " >/dev/null 2>&1 || fail "Failed to download .NET installer (check internet)"
       powershell -ExecutionPolicy Bypass -File "$INSTALL_SCRIPT.ps1" -Channel "$MIN_DOTNET" -InstallDir "$DOTNET_DIR" >/dev/null 2>&1
-    else
-      fail "Failed to download dotnet-install.sh (check internet)"
+      export PATH="$DOTNET_DIR:$PATH"
+      export DOTNET_ROOT="$DOTNET_DIR"
+      ok ".NET SDK $(dotnet --version) installed"
+      return 0
     fi
+    fail "Failed to download dotnet-install.sh (check internet)"
   }
 
-  if [ -f "$INSTALL_SCRIPT" ]; then
-    chmod +x "$INSTALL_SCRIPT"
-    info "Installing .NET SDK $MIN_DOTNET to $DOTNET_DIR..."
-    bash "$INSTALL_SCRIPT" --channel "$MIN_DOTNET" --install-dir "$DOTNET_DIR" >/tmp/dotnet-install.log 2>&1 || {
-      cat /tmp/dotnet-install.log
-      fail ".NET SDK install failed"
-    }
-  fi
+  chmod +x "$INSTALL_SCRIPT"
+  info "Installing .NET SDK $MIN_DOTNET..."
+  bash "$INSTALL_SCRIPT" --channel "$MIN_DOTNET" --install-dir "$DOTNET_DIR" >/tmp/dotnet-install.log 2>&1 || {
+    cat /tmp/dotnet-install.log
+    fail ".NET SDK install failed"
+  }
 
   export PATH="$DOTNET_DIR:$PATH"
   export DOTNET_ROOT="$DOTNET_DIR"
 
-  # Persist to shell profile (skip on Windows — too complex)
+  # Persist to shell profile
   if [ "$OS" != "win" ]; then
     local rc
     case "$SHELL" in */zsh) rc="$HOME/.zshrc" ;; */bash) rc="$HOME/.bashrc" ;; *) rc="$HOME/.profile" ;; esac
@@ -284,11 +215,6 @@ install_dotnet() {
 build_aion() {
   header "Building AION"
 
-  if [ ! -f "$SRC_DIR/Aion.Host/Aion.Host.csproj" ]; then
-    fail "Cannot find AION source. Run this script from the project root."
-  fi
-  info "Source: $SRC_DIR"
-
   local PUBLISH_DIR="$SRC_DIR/dist"
   rm -rf "$PUBLISH_DIR" 2>/dev/null || true
 
@@ -297,16 +223,13 @@ build_aion() {
   ok "Dependencies restored"
 
   info "Compiling backend (Release)..."
-  dotnet publish "$SRC_DIR/Aion.Host/Aion.Host.csproj" -c Release -o "$PUBLISH_DIR" >/dev/null 2>&1
+  dotnet publish "$SRC_DIR/Aion.Host/Aion.Host.csproj" -c Release -o "$PUBLISH_DIR" >/tmp/dotnet-publish.log 2>&1
   if [ ! -f "$PUBLISH_DIR/Aion.Host.dll" ]; then
-    warn "Backend build had issues — retrying with output..."
-    dotnet publish "$SRC_DIR/Aion.Host/Aion.Host.csproj" -c Release -o "$PUBLISH_DIR"
-    fail "Backend build failed"
+    cat /tmp/dotnet-publish.log
+    fail "Backend build failed — see /tmp/dotnet-publish.log"
   fi
 
-  local SIZE
-  SIZE="$(du -sh "$PUBLISH_DIR" 2>/dev/null | cut -f1)"
-  [ -z "$SIZE" ] && SIZE="$(ls -lh "$PUBLISH_DIR/Aion.Host.dll" | awk '{print $5}')"
+  local SIZE; SIZE="$(du -sh "$PUBLISH_DIR" 2>/dev/null | cut -f1)"
   ok "Backend compiled → dist/ ($SIZE)"
 
   if [ -d "$SRC_DIR/aion-ui" ]; then
@@ -333,12 +256,12 @@ build_aion() {
 }
 
 # ──────────────────────────────────────────────────────────
-# Phase 4: Create launchers (per-platform)
+# Phase 4: Create launchers
 # ──────────────────────────────────────────────────────────
 install_launchers() {
   header "Creating launchers"
 
-  # Unix launcher (aion.sh)
+  # Unix launcher
   cat > "$SRC_DIR/aion.sh" << 'LAUNCHER'
 #!/usr/bin/env bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -349,7 +272,7 @@ LAUNCHER
   chmod +x "$SRC_DIR/aion.sh"
   ok "Launcher: aion.sh"
 
-  # Windows launcher (aion.cmd — double-clickable)
+  # Windows launcher (double-clickable)
   cat > "$SRC_DIR/aion.cmd" << 'WINLAUNCHER'
 @echo off
 set DOTNET_ROOT=%USERPROFILE%\.dotnet
@@ -359,190 +282,102 @@ pause
 WINLAUNCHER
   ok "Launcher: aion.cmd (Windows)"
 
-  # Symlink Unix launcher to PATH
+  # Symlink to PATH
   if [ "$OS" != "win" ]; then
-    local LINK_DIR
-    for d in "$HOME/.local/bin" "$HOME/bin"; do
+    local LINK_DIR=""
+    for d in "$HOME/.local/bin" "$HOME/bin" "/usr/local/bin"; do
       if [ -d "$d" ] || echo "$PATH" | tr ':' '\n' | grep -qx "$d" 2>/dev/null; then
         LINK_DIR="$d"; break
       fi
     done
-    if [ -n "$LINK_DIR" ]; then
+    # Fallback: create one
+    if [ -z "$LINK_DIR" ]; then
+      LINK_DIR="$HOME/.local/bin"
       mkdir -p "$LINK_DIR"
-      ln -sf "$SRC_DIR/aion.sh" "$LINK_DIR/aion"
-      ok "Symlinked: $LINK_DIR/aion"
     fi
+    ln -sf "$SRC_DIR/aion.sh" "$LINK_DIR/aion"
+    # Ensure it's on PATH
+    case "$SHELL" in */zsh) rc="$HOME/.zshrc" ;; */bash) rc="$HOME/.bashrc" ;; *) rc="$HOME/.profile" ;; esac
+    if ! grep -q "$LINK_DIR" "$rc" 2>/dev/null; then
+      echo "export PATH=\"\$PATH:$LINK_DIR\"" >> "$rc"
+    fi
+    ok "Command symlinked: $LINK_DIR/aion"
   fi
 }
-# Phase 4b: Install autostart (runs on boot, no terminal)
+
 # ──────────────────────────────────────────────────────────
-install_autostart() {
-  header "Background autostart"
-
-  info "Installing boot-time launcher..."
-
-  case "$OS" in
-    linux)
-      mkdir -p "$HOME/.config/systemd/user"
-      cat > "$HOME/.config/systemd/user/aion.service" << 'SYSTEMD'
-[Unit]
-Description=AION Agent Swarm OS
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=%h/.dotnet/dotnet %h/aion/dist/Aion.Host.dll
-Environment=DOTNET_ROOT=%h/.dotnet
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=default.target
-SYSTEMD
-      systemctl --user daemon-reload 2>/dev/null || true
-      systemctl --user enable aion.service 2>/dev/null || true
-      systemctl --user restart aion.service 2>/dev/null || true
-      ok "systemd user service installed (starts on login)"
-      ;;
-    macos)
-      local PLIST="$HOME/Library/LaunchAgents/com.aion.server.plist"
-      mkdir -p "$HOME/Library/LaunchAgents"
-      cat > "$PLIST" << 'LAUNCHD'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.aion.server</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/bash</string>
-    <string>-c</string>
-    <string>export DOTNET_ROOT=$HOME/.dotnet; export PATH=$DOTNET_ROOT:$PATH; exec $HOME/.dotnet/dotnet $HOME/aion/dist/Aion.Host.dll</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/aion-server.log</string>
-  <key>StandardErrorPath</key><string>/tmp/aion-server.log</string>
-</dict>
-</plist>
-LAUNCHD
-      launchctl load -w "$PLIST" 2>/dev/null || true
-      launchctl start com.aion.server 2>/dev/null || true
-      ok "launchd agent installed (starts on login)"
-      ;;
-    win)
-      cat > "$SRC_DIR/start-aion.vbs" << 'VBS'
-Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run "cmd /c set DOTNET_ROOT=%USERPROFILE%\.dotnet && set PATH=%DOTNET_ROOT%;%PATH% && dotnet %USERPROFILE%\aion\dist\Aion.Host.dll", 0, False
-VBS
-      powershell -Command "Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'AION Server' -Value '$SRC_DIR\start-aion.vbs'" 2>/dev/null || true
-      ok "Windows startup entry added (HKCU Run key) — runs hidden on boot"
-      ;;
-  esac
-
-  # Also offer to autostart Ollama if installed
-  if command -v ollama &>/dev/null; then
-    info "Ollama found — configuring autostart..."
-    case "$OS" in
-      linux)
-        # Check for existing ollama service at either level
-        local OLLAMA_SERVICE=""
-        if [ -f /etc/systemd/system/ollama.service ]; then
-          OLLAMA_SERVICE="system"
-        elif [ -f "$HOME/.config/systemd/user/ollama.service" ]; then
-          OLLAMA_SERVICE="user"
-        elif systemctl --user list-unit-files ollama.service &>/dev/null 2>&1; then
-          OLLAMA_SERVICE="user"
-        elif systemctl list-unit-files ollama.service &>/dev/null 2>&1; then
-          OLLAMA_SERVICE="system"
-        fi
-
-        if [ "$OLLAMA_SERVICE" = "user" ]; then
-          systemctl --user enable ollama.service 2>/dev/null && ok "Ollama user service enabled" || true
-        elif [ "$OLLAMA_SERVICE" = "system" ]; then
-          sudo -n systemctl enable ollama.service 2>/dev/null && ok "Ollama system service enabled" || warn "Could not enable Ollama system service (need sudo)"
-        else
-          warn "Ollama binary found but no service unit — will start alongside AION on login"
-        fi
-        ;;
-      macos)
-        if [ -f "$HOME/Library/LaunchAgents/ai.ollama.ollama.plist" ]; then
-          launchctl load -w "$HOME/Library/LaunchAgents/ai.ollama.ollama.plist" 2>/dev/null || true
-          ok "Ollama launchd agent enabled"
-        else
-          warn "Ollama binary found but no launchd agent — will start alongside AION on login"
-        fi
-        ;;
-    esac
-  fi
-}
-# Phase 5: Launch & verify
+# Phase 5: Start server
 # ──────────────────────────────────────────────────────────
-verify_and_launch() {
-  header "Verifying build"
+start_server() {
+  header "Starting AION"
 
-  # Kill anything on our ports (cross-platform)
-  info "Freeing ports..."
+  # Kill existing on our ports
+  info "Freeing ports 6969, 6970..."
   case "$OS" in
     win)
-      # Windows: use netstat + taskkill
       for port in 6969 6970; do
         netstat -ano 2>/dev/null | grep ":$port " | awk '{print $5}' | sort -u | xargs -r taskkill /F /PID 2>/dev/null || true
       done
-      ;;
-    macos)
-      for port in 6969 6970; do lsof -ti:"$port" 2>/dev/null | xargs -r kill -9 2>/dev/null || true; done
       ;;
     *)
       for port in 6969 6970; do lsof -ti:"$port" 2>/dev/null | xargs -r kill -9 2>/dev/null || true; done
       ;;
   esac
 
-  info "Starting AION server..."
   export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
   export PATH="$DOTNET_ROOT:$PATH"
 
-  local LOG_FILE
-  case "$OS" in
-    win) LOG_FILE="$TEMP/aion-server.log" ;;
-    *)   LOG_FILE="/tmp/aion-server.log" ;;
-  esac
-
+  local LOG_FILE="/tmp/aion-server.log"
   cd "$SRC_DIR/dist"
   nohup dotnet Aion.Host.dll > "$LOG_FILE" 2>&1 &
   local PID=$!
 
+  info "Waiting for server (up to 15s)..."
   local ATTEMPTS=0
   while [ $ATTEMPTS -lt 15 ]; do
     sleep 1
     if curl -sf http://127.0.0.1:6969/api/health >/dev/null 2>&1; then
-      ok "Server PID $PID — listening on http://127.0.0.1:6969"
-      ok "WebSocket hub on ws://127.0.0.1:6970/hub/mesh"
+      ok "Server PID $PID — http://localhost:6969"
+      ok "WebSocket mesh: ws://127.0.0.1:6970/hub/mesh"
       break
     fi
     ATTEMPTS=$((ATTEMPTS + 1))
   done
 
   if [ $ATTEMPTS -ge 15 ]; then
-    warn "Server may not have started. Check $LOG_FILE"
-    tail -10 "$LOG_FILE" 2>/dev/null || true
+    warn "Server didn't respond within 15s. Check $LOG_FILE:"
+    tail -5 "$LOG_FILE" 2>/dev/null || true
     return
   fi
+}
 
-  # ── Write a sensible default config if none exists ──
+# ──────────────────────────────────────────────────────────
+# Phase 6: Create default config
+# ──────────────────────────────────────────────────────────
+create_config() {
   local CONFIG_FILE="$HOME/.aion/aion-config.json"
-  if [ ! -f "$CONFIG_FILE" ]; then
-    info "Creating default config..."
-    mkdir -p "$HOME/.aion"
-    cat > "$CONFIG_FILE" << 'CONFIG'
+  mkdir -p "$HOME/.aion"
+
+  # Detect best available local model
+  local DEFAULT_MODEL="qwen3.5:4b"
+  if command -v ollama &>/dev/null && curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+    local MODELS_JSON
+    MODELS_JSON="$(curl -sf http://127.0.0.1:11434/api/tags 2>/dev/null || echo '{"models":[]}')"
+    # Find largest model under 10GB for best quality
+    local BEST
+    BEST="$(echo "$MODELS_JSON" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    [ -n "$BEST" ] && DEFAULT_MODEL="$BEST"
+    info "Best local model detected: $DEFAULT_MODEL"
+  fi
+
+  cat > "$CONFIG_FILE" << CONFIG
 {
   "Version": 1,
   "Workspace": "~/.aion/workspace",
   "Language": "en",
   "Llm": {
     "Provider": "ollama",
-    "Model": "qwen3.5:4b",
+    "Model": "$DEFAULT_MODEL",
     "Endpoint": "http://127.0.0.1:11434",
     "ApiKey": null
   },
@@ -556,74 +391,116 @@ verify_and_launch() {
   }
 }
 CONFIG
-    ok "Default config created"
-  fi
+  ok "Config created at $CONFIG_FILE (model: $DEFAULT_MODEL)"
+}
 
-  # ── Check LLM availability and guide the user ──
-  local HAS_OLLAMA=false
-  local HAS_API_KEY=false
-
-  if command -v ollama &>/dev/null && curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-    HAS_OLLAMA=true
-  fi
-
-  # Quick API test (graceful even without LLM — server works, agent just returns errors)
-  local REPLY
-  REPLY="$(curl -s -X POST http://127.0.0.1:6969/api/agents/default/message \
-    -H "Content-Type: application/json" \
-    -d '{"text":"What time is it?","mode":"chat"}' 2>/dev/null || echo '{"ok":false}')"
-  if echo "$REPLY" | grep -q '"ok":true'; then
-    ok "Agent loop responds"
-  else
-    warn "Agent API works but needs LLM setup"
-  fi
-
-  # ── LLM guidance ──
-  echo ""
-  if [ "$HAS_OLLAMA" = true ]; then
-    # Check if it has a model loaded
-    local HAS_MODEL
-    HAS_MODEL="$(curl -sf http://127.0.0.1:11434/api/tags 2>/dev/null | grep -c '"name"' || true)"
-    if [ "$HAS_MODEL" -gt 0 ] 2>/dev/null; then
-      ok "Ollama running with models available"
+# ──────────────────────────────────────────────────────────
+# Phase 7: Ollama setup guidance
+# ──────────────────────────────────────────────────────────
+setup_ollama() {
+  if command -v ollama &>/dev/null; then
+    ok "Ollama found"
+    if curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+      local COUNT; COUNT="$(curl -sf http://127.0.0.1:11434/api/tags 2>/dev/null | grep -c '"name"' || true)"
+      if [ "$COUNT" -gt 0 ] 2>/dev/null; then
+        ok "Ollama running with $COUNT model(s)"
+      else
+        warn "Ollama running but no models. Run: ollama pull qwen3.5:4b"
+      fi
     else
-      warn "Ollama running but no models pulled. Run: ollama pull qwen3.5:4b"
+      if [ "$INTERACTIVE" = true ]; then
+        echo ""
+        info "Ollama is installed but not running."
+        read -r -p "  Start Ollama now? [Y/n]: " REPLY
+        case "$REPLY" in [nN]*|[nN][oO]) ;; *)
+          ollama serve > /dev/null 2>&1 &
+          sleep 3
+          info "Pull qwen3.5:4b (2.1GB)? This is the default model [Y/n]: "
+          read -r -p "  " REPLY2
+          case "$REPLY2" in [nN]*|[nN][oO]) ;; *)
+            ollama pull qwen3.5:4b
+            ok "Model qwen3.5:4b ready"
+            ;;
+          esac
+          ;;
+        esac
+      else
+        warn "Ollama installed but not running. Start it: ollama serve &"
+        warn "Then pull a model: ollama pull qwen3.5:4b"
+      fi
     fi
   else
-    echo -e "  ${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${YELLOW}  No local LLM detected. The server is running but    ${NC}"
-    echo -e "  ${YELLOW}  agents won't respond until you connect an LLM.      ${NC}"
-    echo -e "  ${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo -e "  ${BOLD}Option 1 — Install Ollama (local, free):${NC}"
-    echo -e "    curl -fsSL https://ollama.com/install.sh | bash"
-    echo -e "    ollama pull qwen3.5:4b"
-    echo ""
-    echo -e "  ${BOLD}Option 2 — Use OpenAI / DeepSeek (API key):${NC}"
-    echo -e "    Open http://localhost:6969/setup and enter your provider + key"
-    echo ""
-    echo -e "  ${BOLD}Either way, no restart needed:${NC} the dashboard works now."
-    echo ""
+    if [ "$INTERACTIVE" = true ]; then
+      echo ""
+      echo -e "  ${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+      echo -e "  ${YELLOW}  Ollama not found — needed for local AI           ${NC}"
+      echo -e "  ${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+      echo ""
+      read -r -p "  Install Ollama now? [Y/n]: " REPLY
+      case "$REPLY" in [nN]*|[nN][oO])
+        warn "Skipping Ollama. The dashboard works but agents need an LLM."
+        warn "Configure one at http://localhost:6969/setup"
+        return 0
+        ;;
+      esac
+    fi
+
+    info "Installing Ollama..."
+    curl -fsSL https://ollama.com/install.sh | sh 2>&1 || warn "Ollama install script had issues"
+    if command -v ollama &>/dev/null; then
+      ok "Ollama installed"
+      ollama serve > /dev/null 2>&1 &
+      sleep 3
+      if [ "$INTERACTIVE" = true ]; then
+        read -r -p "  Pull default model (qwen3.5:4b, 2.1GB)? [Y/n]: " REPLY2
+        case "$REPLY2" in [nN]*|[nN][oO]) ;; *)
+          ollama pull qwen3.5:4b
+          ok "Model ready"
+          ;;
+        esac
+      fi
+    else
+      warn "Ollama install completed but binary not found (may need restart)"
+    fi
   fi
 }
 
 # ──────────────────────────────────────────────────────────
-# Done
+# Phase 8: Verify the agent loop responds
+# ──────────────────────────────────────────────────────────
+verify_agent() {
+  header "Verifying"
+
+  local REPLY
+  REPLY="$(curl -s -X POST http://127.0.0.1:6969/api/agents/default/message \
+    -H "Content-Type: application/json" \
+    -d '{"text":"Hello, are you alive?","mode":"chat"}' 2>/dev/null || echo '{"ok":false}')"
+  if echo "$REPLY" | grep -q '"ok":true'; then
+    ok "Agent loop responds"
+    echo ""
+    echo -e "  ${GREEN}${BOLD}AION is fully operational${NC}"
+  else
+    warn "Agent API works but LLM is not responding"
+    echo ""
+    echo -e "  ${YELLOW}  The server is running, just needs an LLM.${NC}"
+    echo -e "  ${YELLOW}  Open http://localhost:6969/setup to configure one.${NC}"
+  fi
+}
+
+# ──────────────────────────────────────────────────────────
+# Final: Summary
 # ──────────────────────────────────────────────────────────
 print_summary() {
   echo ""
-  header "AION $AION_VERSION is running"
-  echo ""
-  echo -e "  ${BOLD}Run again:${NC}  $SRC_DIR/aion.sh (or double-click aion.cmd on Windows)"
+  header "AION $AION_VERSION is ready"
   echo ""
   echo -e "  ${BOLD}Dashboard:${NC}  ${CYAN}http://localhost:6969${NC}"
-  echo -e "  ${BOLD}Setup:${NC}     ${CYAN}http://localhost:6969/setup${NC} — configure LLM here"
+  echo -e "  ${BOLD}Setup:${NC}      ${CYAN}http://localhost:6969/setup${NC}"
+  echo -e "  ${BOLD}Run again:${NC}  ./aion.sh (or double-click aion.cmd on Windows)"
   echo ""
   echo -e "  ${BOLD}Ports:${NC}"
   echo -e "    6969 — HTTP API + Web UI"
   echo -e "    6970 — WebSocket agent mesh"
-  echo ""
-  echo -e "  ${BOLD}Stop:${NC}      Ctrl+C in terminal, or pkill -f 'Aion.Host'"
   echo ""
 }
 
@@ -638,13 +515,15 @@ echo -e "  ╚══════════════════════
 echo ""
 
 detect_platform
-install_ollama_if_asked
+check_source
 install_curl
 install_extractor
 install_node
 install_dotnet
 build_aion
 install_launchers
-install_autostart
-verify_and_launch
+create_config
+start_server
+setup_ollama
+verify_agent
 print_summary
