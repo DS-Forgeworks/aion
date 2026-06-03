@@ -260,7 +260,7 @@ public class AionController : ControllerBase
         await _convStore.AddMessageAsync(conv.Id, "user", req.Text ?? "", req.Model);
 
         // Send to agent
-        var request = new AgentRequest(id, "user", req.Text ?? "", req.Mode ?? "chat", req.Model);
+        var request = new AgentRequest(id, "user", req.Text ?? "", req.Mode ?? "chat", req.Model, SessionId: conv.Id);
         var result = await _agentLoop.RunAsync(request);
 
         // Store assistant reply
