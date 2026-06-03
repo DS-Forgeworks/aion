@@ -528,39 +528,71 @@ static class MaskHelper
 
 static class ReplyHelper
 {
-    private static readonly string[] JsonIndicators = { "\"ok\":", "\"success\":", "\"result\":", "\"error\":" };
-    private static readonly string[] ActionPrefixes = { "[TOOL_CALL]", "[PLAN]", "[MEMORY]", "[ERROR]" };
-
-    /// Strip raw JSON, tool framework artifacts, and leading/trailing code fences from agent replies
+    /// Strip JSON, thinking model artifacts, tool framework output from agent replies
     public static string StripJsonFromReply(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return text;
-
-        // Remove JSON blocks that look like tool responses (we want natural language only)
-        // If the whole reply is JSON, return a clean message
         text = text.Trim();
 
-        // Remove markdown code fences wrapping JSON
-        if (text.StartsWith("```json\n") || text.StartsWith("```\n"))
+        // 1. Remove   ...    blocks (thinking model output)
+        while (true)
         {
-            var end = text.LastIndexOf("```");
-            if (end > 3) text = text[text.IndexOf('\n')..end].Trim();
+            var start = text.IndexOf("<think>");
+            if (start < 0) start = text.IndexOf("    ");
+            if (start < 0) break;
+
+            var end = text.IndexOf("</think>", start);
+            if (end < 0) end = text.IndexOf("    ", start + 7);
+            if (end < 0) end = text.IndexOf("\n\n", start);
+
+            if (end >= 0)
+                text = (text[..start] + text[(end + 8)..]).Trim();
+            else
+            {
+                // Unclosed think block — strip from there to end
+                text = text[..start].Trim();
+                break;
+            }
         }
 
-        // If the entire message is a JSON object, replace with a clean summary
-        if (text.StartsWith("{") && text.EndsWith("} { }"))
-            text = "I processed your request. Can I help with anything else?";
+        // Also handle regex-style find of any leftover  tags
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"
+?```(?:json|)\n?", "\n", System.Text.RegularExpressions.RegexOptions.Multiline);
 
-        // Remove action framework prefixes
-        foreach (var prefix in ActionPrefixes)
+        // 2. Remove markdown code fences
+        if (text.StartsWith("```"))
         {
-            if (text.StartsWith(prefix))
+            var endIdx = text.LastIndexOf("```");
+            if (endIdx > 3)
+            {
+                var inner = text[text.IndexOf('\n')..endIdx].Trim();
+                text = inner;
+            }
+        }
+
+        // 3. If the entire thing is a JSON object or array, replace with a clean message
+        if ((text.StartsWith("{") && text.EndsWith("}")) ||
+            (text.StartsWith("[") && text.EndsWith("]")))
+        {
+            // Check if it looks like tool output (has ok/success/result keys)
+            if (text.Contains("\"ok\"") || text.Contains("\"success\"") ||
+                text.Contains("\"result\"") || text.Contains("\"error\""))
+            {
+                return "Got it. What would you like to do next?";
+            }
+        }
+
+        // 4. Remove tool action prefixes
+        string[] prefixes = { "[TOOL_CALL]", "[PLAN]", "[MEMORY]", "[ERROR]", "Tool call:", "Calling tool:" };
+        foreach (var prefix in prefixes)
+        {
+            if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
                 text = text[prefix.Length..].Trim();
                 break;
             }
         }
 
-        return text;
+        return string.IsNullOrWhiteSpace(text) ? "Got it. What's next?" : text;
     }
 }

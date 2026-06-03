@@ -149,6 +149,11 @@ a:hover { text-decoration: underline; }
 
 /* ── Page ── */
 .page { max-width: 1200px; margin: 0 auto; }
+.page.dashboard {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 3rem);
+}
 
 .page-header {
   display: flex;
@@ -215,13 +220,15 @@ a:hover { text-decoration: underline; }
   display: grid;
   grid-template-columns: 240px 1fr;
   gap: 1.25rem;
-  min-height: 70vh;
+  flex: 1;
+  min-height: 0;
 }
 
-/* Chat section fills available vertical space */
+/* Chat section fills ALL available vertical space */
 .dashboard-grid > div:nth-child(2) {
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .dashboard-grid > div:nth-child(2) .chat-header {
@@ -230,6 +237,13 @@ a:hover { text-decoration: underline; }
 
 .dashboard-grid > div:nth-child(2) .model-selector-bar {
   flex-shrink: 0;
+}
+
+.dashboard-grid > div:nth-child(2) .card.send-message {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 /* ── Cards ── */

@@ -407,7 +407,7 @@ export default function Dashboard() {
                 )}
               </div>
             ))}
-            {sending && <div className="message incoming"><span className="msg-content">Thinking...</span></div>}
+            {sending && <div className="message incoming"><span className="msg-content">{messages.length === 0 ? 'Waking up...' : 'Thinking...'}</span></div>}
           </div>
 
           <div className="input-row">
