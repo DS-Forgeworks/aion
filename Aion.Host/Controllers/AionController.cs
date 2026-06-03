@@ -114,6 +114,34 @@ public class AionController : ControllerBase
         return Ok(new { ok = true, id = entry.Id });
     }
 
+    // POST /api/tools/create — register a dynamic tool (agent-created)
+    [HttpPost("tools/create")]
+    public IActionResult CreateTool([FromBody] CreateToolRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req?.Name) || string.IsNullOrWhiteSpace(req?.Code))
+            return BadRequest(new { ok = false, error = "'name' and 'code' are required" });
+
+        if (_toolRegistry.Contains(req.Name))
+            return Conflict(new { ok = false, error = $"Tool '{req.Name}' already exists" });
+
+        var sandbox = HttpContext.RequestServices.GetRequiredService<ISandboxExecutor>();
+        _toolRegistry.RegisterDynamic(req.Name, req.Description ?? $"Agent-created tool: {req.Name}", req.Code, req.Language ?? "python", sandbox);
+        _logger.Info("Tools", $"Dynamic tool registered: {req.Name} ({req.Language ?? "python"})", data: new { name = req.Name, description = req.Description });
+        return Ok(new { ok = true, name = req.Name });
+    }
+
+    // DELETE /api/tools/{name} — remove a dynamic tool
+    [HttpDelete("tools/{name}")]
+    public IActionResult DeleteTool(string name)
+    {
+        if (_toolRegistry.Unregister(name))
+        {
+            _logger.Info("Tools", $"Tool unregistered: {name}");
+            return Ok(new { ok = true, deleted = name });
+        }
+        return NotFound(new { ok = false, error = $"Tool '{name}' not found" });
+    }
+
     // POST /api/run
     [HttpPost("run")]
     public async Task<IActionResult> RunTool([FromBody] RunToolRequest req)
@@ -243,6 +271,7 @@ public class AionController : ControllerBase
     }
 }
 
+public record CreateToolRequest(string? Name, string? Description, string? Code, string? Language);
 public record MessageRequest(string? Text, string? Mode, string? Model);
 public record TaskRequest(string? Text, string? Priority, string? Model = null);
 public record StoreMemoryRequest(string? Content, string? Tags);

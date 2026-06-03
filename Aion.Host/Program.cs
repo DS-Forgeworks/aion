@@ -47,9 +47,20 @@ var toolRegistry = new ToolRegistry();
 toolRegistry.Register(new WebFetchTool());
 toolRegistry.Register(new CalculatorTool());
 toolRegistry.Register(new NowTool());
+toolRegistry.Register(new ShellTool());
+toolRegistry.Register(new SandboxTool());
 toolRegistry.RegisterAlias("search_web", "web_fetch");
 toolRegistry.RegisterAlias("calculate", "calculator");
 toolRegistry.RegisterAlias("time", "now");
+toolRegistry.RegisterAlias("exec", "shell_command");
+toolRegistry.RegisterAlias("sh", "shell_command");
+toolRegistry.RegisterAlias("code", "sandbox");
+
+// Sandbox (needed by DynamicTool for agent-created tools)
+var sandbox = new SandboxTool();
+
+// Register sandbox availability for agent SDK
+builder.Services.AddSingleton<ISandboxExecutor>(new SandboxToolAdapter(sandbox));
 
 // LLM
 var llmService = new LlmService(appConfig, sanitizer);

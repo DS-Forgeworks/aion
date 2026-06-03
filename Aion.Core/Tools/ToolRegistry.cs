@@ -14,9 +14,29 @@ public class ToolRegistry
         _tools[tool.Name] = tool;
     }
 
+    public bool Unregister(string name)
+    {
+        return _tools.TryRemove(name, out _);
+    }
+
     public void RegisterAlias(string alias, string canonicalName)
     {
         _aliases[alias] = canonicalName;
+    }
+
+    public bool RemoveAlias(string alias)
+    {
+        return _aliases.TryRemove(alias, out _);
+    }
+
+    /// <summary>
+    /// Register a dynamically created tool (agent-defined code).
+    /// The tool invokes the sandbox executor when called.
+    /// </summary>
+    public void RegisterDynamic(string name, string description, string code, string language, ISandboxExecutor sandbox)
+    {
+        var tool = new DynamicTool(name, description, code, language, sandbox);
+        Register(tool);
     }
 
     public ITool? Resolve(string name)
