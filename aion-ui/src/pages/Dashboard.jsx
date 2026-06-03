@@ -264,7 +264,6 @@ export default function Dashboard() {
   return (
     <div className="page dashboard">
       <header className="page-header">
-        <h1>Dashboard</h1>
         <div className="header-stats">
           {health && (
             <>

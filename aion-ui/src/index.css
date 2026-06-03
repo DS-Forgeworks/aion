@@ -215,7 +215,21 @@ a:hover { text-decoration: underline; }
   display: grid;
   grid-template-columns: 240px 1fr;
   gap: 1.25rem;
-  min-height: 400px;
+  min-height: 70vh;
+}
+
+/* Chat section fills available vertical space */
+.dashboard-grid > div:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-grid > div:nth-child(2) .chat-header {
+  flex-shrink: 0;
+}
+
+.dashboard-grid > div:nth-child(2) .model-selector-bar {
+  flex-shrink: 0;
 }
 
 /* ── Cards ── */
@@ -333,13 +347,14 @@ a:hover { text-decoration: underline; }
 
 /* ── Messages ── */
 .message-list {
-  max-height: 380px;
+  flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
   margin-bottom: 0.75rem;
   padding-right: 0.25rem;
+  min-height: 200px;
 }
 
 .message-list::-webkit-scrollbar {
@@ -358,15 +373,20 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: flex-start;
   gap: 0.4rem;
+  max-width: 80%;
 }
 .message.outgoing {
   background: var(--primary-subtle);
   border: 1px solid rgba(108, 99, 255, 0.15);
   color: var(--text);
+  align-self: flex-end;
+  margin-left: auto;
 }
 .message.incoming {
   background: var(--surface-2);
   border: 1px solid var(--border);
+  align-self: flex-start;
+  margin-right: auto;
 }
 
 .msg-model-badge {

@@ -187,6 +187,10 @@ public class AionController : ControllerBase
         {
             replyContent = "I'm not sure I understood correctly. Could you rephrase or clarify what you're looking for?";
         }
+
+        // Strip JSON blobs from reply — agents sometimes return raw tool output as JSON
+        replyContent = ReplyHelper.StripJsonFromReply(replyContent);
+
         await _convStore.AddMessageAsync(conv.Id, "assistant", replyContent, req.Model);
 
         // Update title on first message
@@ -519,5 +523,44 @@ static class MaskHelper
     {
         if (string.IsNullOrEmpty(key) || key.Length < 8) return key;
         return key[..4] + "****" + key[^4..];
+    }
+}
+
+static class ReplyHelper
+{
+    private static readonly string[] JsonIndicators = { "\"ok\":", "\"success\":", "\"result\":", "\"error\":" };
+    private static readonly string[] ActionPrefixes = { "[TOOL_CALL]", "[PLAN]", "[MEMORY]", "[ERROR]" };
+
+    /// Strip raw JSON, tool framework artifacts, and leading/trailing code fences from agent replies
+    public static string StripJsonFromReply(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text;
+
+        // Remove JSON blocks that look like tool responses (we want natural language only)
+        // If the whole reply is JSON, return a clean message
+        text = text.Trim();
+
+        // Remove markdown code fences wrapping JSON
+        if (text.StartsWith("```json\n") || text.StartsWith("```\n"))
+        {
+            var end = text.LastIndexOf("```");
+            if (end > 3) text = text[text.IndexOf('\n')..end].Trim();
+        }
+
+        // If the entire message is a JSON object, replace with a clean summary
+        if (text.StartsWith("{") && text.EndsWith("} { }"))
+            text = "I processed your request. Can I help with anything else?";
+
+        // Remove action framework prefixes
+        foreach (var prefix in ActionPrefixes)
+        {
+            if (text.StartsWith(prefix))
+            {
+                text = text[prefix.Length..].Trim();
+                break;
+            }
+        }
+
+        return text;
     }
 }
