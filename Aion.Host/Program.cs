@@ -53,12 +53,22 @@ toolRegistry.Register(new CalculatorTool());
 toolRegistry.Register(new NowTool());
 toolRegistry.Register(new ShellTool());
 toolRegistry.Register(new SandboxTool());
+toolRegistry.Register(new WebSearchTool());
+toolRegistry.Register(new ReadFileTool());
+toolRegistry.Register(new WriteFileTool());
+toolRegistry.Register(new RememberTool());
+toolRegistry.Register(new RecallTool());
+toolRegistry.Register(new ScheduleTool());
 toolRegistry.RegisterAlias("search_web", "web_fetch");
 toolRegistry.RegisterAlias("calculate", "calculator");
 toolRegistry.RegisterAlias("time", "now");
 toolRegistry.RegisterAlias("exec", "shell_command");
 toolRegistry.RegisterAlias("sh", "shell_command");
 toolRegistry.RegisterAlias("code", "sandbox");
+toolRegistry.RegisterAlias("read", "read_file");
+toolRegistry.RegisterAlias("write", "write_file");
+toolRegistry.RegisterAlias("search", "web_search");
+toolRegistry.RegisterAlias("remind", "schedule");
 
 // Sandbox (needed by DynamicTool for agent-created tools)
 var sandbox = new SandboxTool();
