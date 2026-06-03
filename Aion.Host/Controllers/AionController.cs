@@ -387,6 +387,25 @@ public class AionController : ControllerBase
             return StatusCode(500, new { ok = false, error = ex.Message });
         }
     }
+
+    /// Auto-login: generates a token without requiring a password.
+    /// Stores the token in ~/.aion/aion-token.txt for other scripts to use.
+    [HttpGet("auto-login")]
+    public async Task<IActionResult> AutoLogin()
+    {
+        var token = await _auth.AutoLoginAsync();
+
+        // Write token to a file in the aion config dir so scripts can read it
+        var configDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aion");
+        Directory.CreateDirectory(configDir);
+        var tokenFile = Path.Combine(configDir, "aion-token.txt");
+        await System.IO.File.WriteAllTextAsync(tokenFile, token);
+
+        _logger.Info("Auth", "Auto-login: token generated and saved");
+        return Ok(new { ok = true, token, path = tokenFile });
+    }
+
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {

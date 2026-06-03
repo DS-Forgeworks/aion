@@ -8,6 +8,7 @@ public class AuthMiddleware
     private static readonly string[] PublicPaths = {
         "/api/health",
         "/api/login",
+        "/api/auto-login",
         "/api/setup",
         "/hub/",
         "/login",

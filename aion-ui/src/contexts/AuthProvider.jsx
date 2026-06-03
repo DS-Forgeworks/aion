@@ -40,12 +40,24 @@ export function AuthProvider({ children }) {
     init();
   }, []);
 
-  // Auto-login if token stored
+  // Auto-login if token stored, else try auto-login endpoint
   useEffect(() => {
     if (state.token) {
       localStorage.setItem('aion_token', state.token);
       document.cookie = `aion_token=${state.token}; path=/; max-age=2592000; SameSite=Strict`;
       dispatch({ type: 'SET_AUTH', user: { email: 'admin' }, token: state.token });
+    } else {
+      // Try auto-login endpoint
+      fetch('/api/auto-login')
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok && data.token) {
+            localStorage.setItem('aion_token', data.token);
+            document.cookie = `aion_token=${data.token}; path=/; max-age=2592000; SameSite=Strict`;
+            dispatch({ type: 'SET_AUTH', user: { email: 'admin' }, token: data.token });
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 

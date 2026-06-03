@@ -153,6 +153,45 @@ public class AuthService
         return (long)cmd.ExecuteScalar()! > 0;
     }
 
+    /// Auto-login: creates a session for the admin user without password check.
+    /// Returns the token string so the client can use it immediately.
+    public async Task<string> AutoLoginAsync()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+
+        // Get the admin user
+        using var userCmd = conn.CreateCommand();
+        userCmd.CommandText = "SELECT id FROM users WHERE email = 'admin'";
+        var userId = (string?)userCmd.ExecuteScalar();
+        if (userId == null)
+        {
+            // Create admin user on the fly
+            userId = Guid.NewGuid().ToString();
+            using var create = conn.CreateCommand();
+            create.CommandText = @"
+                INSERT INTO users (id, email, display_name, role, password_hash, api_key_hash, created_at)
+                VALUES ($id, 'admin', 'Admin', 'admin', '', '', $now)";
+            create.Parameters.AddWithValue("$id", userId);
+            create.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("O"));
+            create.ExecuteNonQuery();
+        }
+
+        // Create a fresh session
+        var token = GenerateToken();
+        using var sessionCmd = conn.CreateCommand();
+        sessionCmd.CommandText = @"
+            INSERT INTO user_sessions (id, user_id, token, expires_at)
+            VALUES ($id, $user, $token, $expires)";
+        sessionCmd.Parameters.AddWithValue("$id", Guid.NewGuid().ToString());
+        sessionCmd.Parameters.AddWithValue("$user", userId);
+        sessionCmd.Parameters.AddWithValue("$token", token);
+        sessionCmd.Parameters.AddWithValue("$expires", DateTime.UtcNow.AddDays(30).ToString("O"));
+        sessionCmd.ExecuteNonQuery();
+
+        return token;
+    }
+
     public async Task<string?> GetApiKeyAsync()
     {
         using var conn = new SqliteConnection(_connectionString);
