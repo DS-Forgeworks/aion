@@ -14,12 +14,6 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
 
-  // Password change
-  const [oldPw, setOldPw] = useState('');
-  const [newPw, setNewPw] = useState('');
-  const [pwMsg, setPwMsg] = useState(null);
-  const [changingPw, setChangingPw] = useState(false);
-
   if (!token) {
     navigate('/login');
     return null;
@@ -63,36 +57,11 @@ export default function Settings() {
         body: JSON.stringify(config),
       });
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
-      setSaveMsg({ type: 'success', text: 'Configuration saved. Restart server to apply.' });
+      setSaveMsg({ type: 'success', text: 'Configuration saved and applied.' });
     } catch (err) {
       setSaveMsg({ type: 'error', text: err.message });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleChangePassword = async () => {
-    if (!oldPw || !newPw) { setPwMsg('Fill in both fields'); return; }
-    if (newPw.length < 4) { setPwMsg('Password must be at least 4 characters'); return; }
-    setChangingPw(true);
-    setPwMsg(null);
-    try {
-      const res = await authedFetch('/api/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setPwMsg({ type: 'success', text: 'Password changed!' });
-        setOldPw(''); setNewPw('');
-      } else {
-        setPwMsg({ type: 'error', text: data.error || 'Failed' });
-      }
-    } catch (err) {
-      setPwMsg({ type: 'error', text: err.message });
-    } finally {
-      setChangingPw(false);
     }
   };
 
@@ -144,42 +113,6 @@ export default function Settings() {
       )}
 
       <section className="settings-section">
-        <h2>Account</h2>
-        <div className="settings-grid">
-          <div className="setting">
-            <label>Current Password</label>
-            <input
-              type="password"
-              value={oldPw}
-              onChange={(e) => setOldPw(e.target.value)}
-              placeholder="Current password"
-            />
-          </div>
-          <div className="setting">
-            <label>New Password</label>
-            <input
-              type="password"
-              value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
-              placeholder="New password"
-            />
-          </div>
-          <div className="setting setting-action">
-            <button
-              className="btn-secondary"
-              onClick={handleChangePassword}
-              disabled={changingPw}
-            >
-              {changingPw ? 'Changing...' : 'Change Password'}
-            </button>
-            {pwMsg && (
-              <span className={`msg-inline ${pwMsg.type}`}>{pwMsg.text}</span>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="settings-section">
         <h2>LLM Configuration</h2>
         <div className="settings-grid">
           <div className="setting">
@@ -219,12 +152,12 @@ export default function Settings() {
               <button
                 className="btn-refresh"
                 onClick={fetchModels}
-                title="Refresh model list — always fetches fresh"
+                title="Refresh model list"
               >
                 ↻
               </button>
             </div>
-            <p className="setting-hint">Auto-populated from Ollama. Select any model or type a custom name.</p>
+            <p className="setting-hint">Populated from Ollama. Select a model or type a custom name.</p>
           </div>
           <div className="setting">
             <label>Endpoint</label>
@@ -273,6 +206,29 @@ export default function Settings() {
                 ...prev, safety: { ...prev.safety, shellEnabled: e.target.checked }
               }))}
             />
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-section info-section">
+        <h2>System</h2>
+        <div className="settings-grid">
+          <div className="setting">
+            <label>Token Location</label>
+            <code className="token-path">~/.aion/aion-token.txt</code>
+          </div>
+          <div className="setting">
+            <label>Config File</label>
+            <code className="token-path">~/.aion/aion-config.json</code>
+          </div>
+          <div className="setting">
+            <label>Server</label>
+            <span>localhost:6969</span>
+          </div>
+          <div className="setting setting-action">
+            <button className="btn-secondary danger" onClick={logout}>
+              Sign Out
+            </button>
           </div>
         </div>
       </section>

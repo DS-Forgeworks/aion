@@ -70,6 +70,14 @@ builder.Services.AddSingleton<ISandboxExecutor>(new SandboxToolAdapter(sandbox))
 var llmService = new LlmService(appConfig, sanitizer);
 var promptBuilder = new PromptBuilder();
 
+// Load system personality (soul) from AION_SYSTEM_PROMPT.md
+var soulPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "AION_SYSTEM_PROMPT.md");
+if (!File.Exists(soulPath))
+    soulPath = Path.Combine(AppContext.BaseDirectory, "AION_SYSTEM_PROMPT.md");
+if (!File.Exists(soulPath))
+    soulPath = Path.Combine(configDir, "AION_SYSTEM_PROMPT.md");
+promptBuilder.LoadSoul(soulPath);
+
 // Agent loop
 var agentLoop = new AgentLoop(
     llmService, promptBuilder, toolRegistry, repairer,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useWebSocket } from '../contexts/WebSocketProvider';
 import { useAuth } from '../contexts/AuthProvider';
 import { authedFetch } from '../lib/authFetch';
@@ -7,18 +7,22 @@ import LoadingSkeleton from '../components/LoadingSkeleton';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { state: ws, send } = useWebSocket();
   const { token, isAuthenticated, logout, firstRun } = useAuth();
   const [health, setHealth] = useState(null);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('aion_messages') || '[]'); }
+    catch { return []; }
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [models, setModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedModel, setSelectedModel] = useState(() => sessionStorage.getItem('aion_model') || '');
   const [configModel, setConfigModel] = useState('');
   const [conversations, setConversations] = useState([]);
-  const [currentConvId, setCurrentConvId] = useState(null);
+  const [currentConvId, setCurrentConvId] = useState(() => sessionStorage.getItem('aion_conv') || null);
   const [showHistory, setShowHistory] = useState(false);
   const [sending, setSending] = useState(false);
   const [editingMsgId, setEditingMsgId] = useState(null);
@@ -29,6 +33,11 @@ export default function Dashboard() {
     navigate('/login');
     return null;
   }
+
+  // Persist chat state across navigation (sessionStorage survives refresh within tab)
+  useEffect(() => { sessionStorage.setItem('aion_messages', JSON.stringify(messages)); }, [messages]);
+  useEffect(() => { if (currentConvId) sessionStorage.setItem('aion_conv', currentConvId); }, [currentConvId]);
+  useEffect(() => { if (selectedModel) sessionStorage.setItem('aion_model', selectedModel); }, [selectedModel]);
 
   useEffect(() => {
     const fetchHealth = async () => {
