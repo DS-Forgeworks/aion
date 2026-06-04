@@ -11,6 +11,7 @@ public class AuthMiddleware
         "/api/login",
         "/api/auto-login",
         "/api/setup",
+        "/api/mcp/",
         "/hub/",
         "/login",
         "/favicon.svg",

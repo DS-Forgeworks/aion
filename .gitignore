@@ -1,5 +1,6 @@
 # Build output
 dist/
+dist-single/
 bin/
 obj/
 *.user

@@ -134,10 +134,12 @@ public class ReadFileTool : ITool
         // Expand ~ to home directory
         if (path.StartsWith("~/"))
             path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..]);
-        if (path.StartsWith("/home/user/") || path.StartsWith("/home/"))
+        // Replace common LLM-hallucinated /home/user/ with actual home
+        var match = Regex.Match(path, @"^/home/([^/]+)/(.*)$");
+        if (match.Success)
         {
-            var rest = path[path.IndexOf('/', 5)..]; // after /home/xxx/foo → /foo
-            path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), rest.TrimStart('/'));
+            var rest = match.Groups[2].Value;
+            path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), rest);
         }
         return path;
     }
@@ -165,6 +167,11 @@ public class WriteFileTool : ITool
             // Expand ~
             if (path.StartsWith("~/"))
                 path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path[2..]);
+            
+            // Replace /home/<anything>/ with actual home
+            var m = System.Text.RegularExpressions.Regex.Match(path, @"^/home/([^/]+)/(.*)$");
+            if (m.Success)
+                path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), m.Groups[2].Value);
 
             var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir))

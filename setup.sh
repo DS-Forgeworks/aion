@@ -278,6 +278,24 @@ build_aion() {
 # ──────────────────────────────────────────────────────────
 # Phase 4: Create launchers
 # ──────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────
+# Phase: Install MCP servers
+# ──────────────────────────────────────────────────────────
+install_mcp_servers() {
+  local PUBLISH_DIR="$SRC_DIR/dist"
+  local MCP_DIR="$PUBLISH_DIR/mcp_servers"
+  mkdir -p "$MCP_DIR"
+  
+  # Always copy email server (zero deps — pure stdlib)
+  if [ -f "$SRC_DIR/mcp_servers/email_server.py" ]; then
+    cp "$SRC_DIR/mcp_servers/email_server.py" "$MCP_DIR/"
+    chmod +x "$MCP_DIR/email_server.py"
+    ok "Email MCP server copied"
+  fi
+  
+  ok "MCP servers ready at $MCP_DIR"
+}
+
 install_launchers() {
   header "Creating launchers"
 
@@ -529,6 +547,7 @@ install_extractor
 install_node
 install_dotnet
 build_aion
+install_mcp_servers
 install_launchers
 create_config
 start_server

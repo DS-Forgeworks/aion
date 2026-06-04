@@ -11,6 +11,7 @@ using Aion.Core.Services;
 using Aion.Core.Tools;
 using Aion.Core.Planning;
 using Aion.Core.Tools.Builtin;
+using Aion.Core.Mcp;
 using Aion.Core.Mesh;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -132,6 +133,13 @@ var agentLoop = new AgentLoop(
     llmService, promptBuilder, toolRegistry, planExtractor,
     scorer, safety, memoryStore, planStore, sanitizer, logger);
 
+// MCP Manager (external tool servers)
+var mcpLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<McpManager>();
+var mcpManager = new McpManager(mcpLogger);
+
+// Task Scheduler (recurring background agent jobs)
+var taskScheduler = new AionTaskScheduler();
+
 // Mesh
 var meshHub = new MeshHub(logger);
 
@@ -153,12 +161,17 @@ builder.Services.AddSingleton(planStore as IPlanStore);
 builder.Services.AddSingleton(convStore as IConversationStore);
 builder.Services.AddSingleton(auth);
 builder.Services.AddSingleton(toolRegistry);
+builder.Services.AddSingleton(mcpManager);
+builder.Services.AddSingleton(taskScheduler);
 builder.Services.AddSingleton(llmService);
 builder.Services.AddSingleton(promptBuilder);
 builder.Services.AddSingleton(agentLoop);
 builder.Services.AddSingleton(appConfig);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(opts =>
+{
+    opts.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+});
 builder.Services.AddSignalR();
 
 var app = builder.Build();
